@@ -170,7 +170,7 @@ ol.hot{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
     <ol>
       <li>ตั้งค่าไว้ให้แล้วตาม dashboard.html เดิม: Realtime Database ที่ <span class="num">/sensor</span> ฟิลด์ <span class="num">pm1_0</span>, <span class="num">pm2_5</span>, <span class="num">pm10</span></li>
       <li>ถ้า ESP32 ส่งฟิลด์อื่นเพิ่ม เช่น ก๊าซ อุณหภูมิ หรือพิกัด GPS ให้ใส่ชื่อฟิลด์นั้นใน <span class="num">fields</span> (ฟิลด์ซ้อนใช้จุด เช่น <span class="num">"gps.lat"</span>)</li>
-      <li>ถ้า ESP32 push รายการใหม่ทุกครั้งที่วัด ให้ตั้ง <span class="num">rtdbMode</span> เป็น <span class="num">"list"</span> และใส่ path ของรายการนั้นใน <span class="num">rtdbPath</span></li>
+      <li><span class="num">rtdbMode: "auto"</span> (ค่าเริ่มต้น) อ่านประวัติจาก <span class="num">/history</span> ถ้า ESP32 ส่งมา ไม่งั้นอ่านค่าล่าสุดจาก <span class="num">/sensor</span> ถ้าเคยกดบันทึกการตั้งค่าไว้ก่อน ให้กด "ล้างค่าที่บันทึก" หนึ่งครั้ง</li>
       <li>ใส่รหัสสถานี Air4Thai ขอนแก่นใน <span class="num">air4thaiStation</span> และรันสคริปต์ <span class="num">air4thai_to_firebase.py</span> เพื่อให้มีค่าสถานีใน Firebase</li>
     </ol>
     <label for="cfgText" class="small muted" style="display:block;margin-top:10px">ค่าตั้ง (JSON)</label>
@@ -387,7 +387,8 @@ const DEFAULT_CONFIG = {
   },
   // --- Realtime Database ---
   rtdbPath: "/sensor",              // node ที่ ESP32 เขียนค่าล่าสุด
-  rtdbMode: "node",                 // "node" = เขียนทับค่าเดียว | "list" = ESP32 push เพิ่มรายการใหม่ทุกครั้ง
+  historyPath: "/history",          // รายการที่ ESP32 push เพิ่มทุกรอบ พร้อม timestamp
+  rtdbMode: "auto",                 // "auto" = ใช้ historyPath ถ้ามีข้อมูลใหม่ ไม่งั้นใช้ rtdbPath | "node" = อ่าน rtdbPath อย่างเดียว | "list" = อ่านรายการจาก rtdbPath
   // --- Firestore ---
   mode: "collection",               // "collection" | "doc"
   collection: "sensorData",
@@ -403,7 +404,7 @@ const DEFAULT_CONFIG = {
   air4thaiStation: "",              // รหัสสถานี Air4Thai ขอนแก่น (ดูด้วย: python air4thai_to_firebase.py --list ขอนแก่น)
   air4thaiViaFirebase: true,        // true = อ่านค่าที่สคริปต์ air4thai_to_firebase.py เขียนไว้ใน /air4thai
   historyHours: 24,
-  maxDocs: 3000
+  maxDocs: 9000                     // 24 ชม. ที่ส่งทุก 10 วินาที = 8,640 รายการ
 };
 /* ===================================================================== */
 
@@ -535,23 +536,38 @@ const DEFAULT_CONFIG = {
     try { firebase.initializeApp(fb); } catch (e) { if (!/already exists/.test(e.message)) throw e; }
     const db = firebase.database();
     setStatus('info', 'กำลังเชื่อมต่อ Realtime Database …');
+    if (CONFIG.rtdbMode === 'auto') {
+      // มี /history ที่อัปเดตภายใน historyHours ไหม ถ้ามีใช้โหมด list (กราฟย้อนหลังครบทันทีที่เปิดหน้า)
+      db.ref(CONFIG.historyPath).orderByKey().limitToLast(1).once('value').then(snap => {
+        const v = snap.val(), d = v ? Object.values(v)[0] : null;
+        const t = d ? toDate(getPath(d, CONFIG.timeField)) : null;
+        const fresh = t && +t > Date.now() - CONFIG.historyHours * H;
+        listenRTDB(db, fresh ? 'list' : 'node', fresh ? CONFIG.historyPath : CONFIG.rtdbPath);
+      }, () => listenRTDB(db, 'node', CONFIG.rtdbPath));
+      return;
+    }
+    listenRTDB(db, CONFIG.rtdbMode, CONFIG.rtdbPath);
+  }
+
+  function listenRTDB(db, mode, path) {
+    store.path = path;
     const onErr = e => { console.error(e); setStatus('err', '<b>อ่าน Realtime Database ไม่ได้:</b> ' + (e.message || e) + '<br>ตรวจสอบ path และ Database Rules ว่าอนุญาตให้อ่าน'); };
-    const timer = setTimeout(() => { if (!store.live) setStatus('warn', 'ยังไม่ได้รับข้อมูลจาก <span class="num">' + CONFIG.rtdbPath + '</span> ตรวจว่า ESP32 เปิดอยู่ และ Database Rules อนุญาตให้อ่าน'); }, 8000);
-    if (CONFIG.rtdbMode === 'list') {
-      db.ref(CONFIG.rtdbPath).orderByKey().limitToLast(CONFIG.maxDocs).on('value', snap => {
+    const timer = setTimeout(() => { if (!store.live) setStatus('warn', 'ยังไม่ได้รับข้อมูลจาก <span class="num">' + path + '</span> ตรวจว่า ESP32 เปิดอยู่ และ Database Rules อนุญาตให้อ่าน'); }, 8000);
+    if (mode === 'list') {
+      db.ref(path).orderByKey().limitToLast(CONFIG.maxDocs).on('value', snap => {
         const v = snap.val(); if (!v) return; clearTimeout(timer);
         const cut = Date.now() - CONFIG.historyHours * H;
         store.rows = Object.values(v).map(d => parseDoc(d)).filter(r => r.t > cut).sort((a, b) => a.t - b.t);
-        liveOK('Realtime Database · ' + store.rows.length + ' รายการใน ' + CONFIG.historyHours + ' ชม.');
+        liveOK('Realtime Database <span class="num">' + path + '</span> · ' + store.rows.length + ' รายการใน ' + CONFIG.historyHours + ' ชม.');
       }, onErr);
       return;
     }
     loadHist();
     if (store.rows.length) renderOverview();
-    db.ref(CONFIG.rtdbPath).on('value', snap => {
+    db.ref(path).on('value', snap => {
       const v = snap.val(); if (!v) return; clearTimeout(timer);
       appendReading(parseDoc(v, new Date()));
-      liveOK('Realtime Database <span class="num">' + CONFIG.rtdbPath + '</span> · เก็บประวัติในเบราว์เซอร์นี้ ' + store.rows.length + ' ค่า');
+      liveOK('Realtime Database <span class="num">' + path + '</span> · เก็บประวัติในเบราว์เซอร์นี้ ' + store.rows.length + ' ค่า');
     }, onErr);
   }
 
@@ -664,7 +680,7 @@ const DEFAULT_CONFIG = {
     const show = (id, bar, v, pct, dec) => { $(id).textContent = v == null ? '—' : v.toFixed(dec || 0); if (bar) $(bar).style.width = v == null ? '0%' : Math.max(0, Math.min(100, pct(v))) + '%'; };
     show('gTvoc', 'bTvoc', g.tvoc, v => v / 6);
     show('gEco2', 'bEco2', g.eco2, v => (v - 400) / 12);
-    show('gCo', 'bCo', g.co, v => v);
+    show('gCo', 'bCo', g.co == null ? null : (g.co > 100 ? g.co / 40.95 : g.co), v => v);   // ESP32 ส่งค่า ADC 0–4095 แปลงเป็นดัชนี 0–100
     show('gUba', 'bUba', g.aqiUba, v => v * 20);
     show('gT', null, g.temp, null, 1); show('gRh', null, g.rh, null, 0);
     show('gPm1', null, g.pm1, null, 1); show('gPm10', null, g.pm10, null, 1);
@@ -714,7 +730,7 @@ const DEFAULT_CONFIG = {
     }
     setTimeout(() => map.invalidateSize(), 50);
     layer.clearLayers();
-    if (!pts.length) { $('realMapNote').textContent = store.live ? 'ยังไม่มีข้อมูลพิกัด GPS ใน ' + CONFIG.historyHours + ' ชม.ที่ผ่านมา (ESP32 ยังไม่ได้ส่งฟิลด์ lat/lng มาที่ ' + CONFIG.rtdbPath + ')' : 'แสดงเมื่อเชื่อมต่อข้อมูลจริง'; return; }
+    if (!pts.length) { $('realMapNote').textContent = store.live ? 'ยังไม่มีข้อมูลพิกัด GPS ใน ' + CONFIG.historyHours + ' ชม.ที่ผ่านมา (ESP32 ยังไม่ได้ส่งฟิลด์ lat/lng มาที่ ' + (store.path || CONFIG.rtdbPath) + ')' : 'แสดงเมื่อเชื่อมต่อข้อมูลจริง'; return; }
     pts.forEach((p, i) => {
       const last = i === pts.length - 1;
       const c = p.pm25 == null ? css('--faint') : css(level(p.pm25).c);

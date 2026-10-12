@@ -21,7 +21,7 @@
 
 | รหัส | ข้อมูล | ลักษณะการเก็บ | แหล่ง | ไฟล์ใน `data/raw/` |
 |---|---|---|---|---|
-| B1 | ตำแหน่งคงที่ PM, TVOC, eCO₂, CO index, T, RH | ต่อเนื่อง ทุก 10 วินาที | Firebase `/history` หรือ SD card | `firebase_export.json`, `sd/*.csv` |
+| B1 | ตำแหน่งคงที่ PM, TVOC, eCO₂, CO index, T, RH | ต่อเนื่อง ทุก 10 วินาที | Firebase `/history` หรือ SD card (`/YYYYMMDD.csv`) | `firebase_export.json`, `sd/*.csv` |
 | B2 | รอบวัดเคลื่อนที่ + GPS | 12 รอบ เส้นทาง 12–18 กม. เริ่มและจบที่สถานี | เหมือน B1 (มีฟิลด์ `lat`, `lng`) | `runs/<YYYYMMDD>_<รอบ>.csv` |
 
 บันทึกของแต่ละรอบ (วันที่ เวลาเริ่ม/จบ สภาพอากาศ เหตุการณ์ผิดปกติ) ใน `runs/run_log.csv`
@@ -32,13 +32,16 @@
 |---|---|---|
 | `timestamp` | ms (epoch, UTC) | เวลาฝั่งเซิร์ฟเวอร์ Firebase |
 | `device` | – | `unit-01`, `unit-02` |
-| `pm1_0`, `pm2_5`, `pm10` | µg/m³ | ค่าดิบจาก PMS5003 ระบุว่าเป็น CF=1 หรือ ATM |
+| `pm1_0`, `pm2_5`, `pm10` | µg/m³ | ค่า ATM เฉลี่ยของ PMS5003 ทุกตัวในรอบ 10 วินาที |
+| `pm2_5_a`, `pm2_5_b` | µg/m³ | PM2.5 แยกตัวที่ 1 / 2 (inter-unit precision) |
+| `pm1_0_cf1`, `pm2_5_cf1`, `pm10_cf1` | µg/m³ | ค่า CF=1 ใช้กับสูตรแก้ความชื้น EPA |
 | `tvoc` | ppb | ENS160 |
 | `eco2` | ppm | ENS160 (ค่าประมาณจาก VOC ไม่ใช่ CO₂ จริง) |
 | `aqi` | 1–5 | AQI-UBA จาก ENS160 |
+| `ens_status` | 0–3 | 0 = ปกติ, 1 = อุ่นเครื่อง, 2 = เริ่มใช้ครั้งแรก, 3 = ไม่มีค่า (วิเคราะห์เฉพาะ 0) |
 | `co` | ADC (0–4095) | MQ-7 ใช้เป็นดัชนีเชิงสัมพัทธ์ |
-| `temperature`, `humidity` | °C, %RH | BME280 |
-| `lat`, `lng` | องศา | GPS จากสมาร์ตโฟน |
+| `temperature`, `humidity`, `pressure` | °C, %RH, hPa | BME280 |
+| `lat`, `lng` | องศา | GPS จากสมาร์ตโฟน (ยังไม่ได้ทำ) |
 
 ## ไฟล์ที่ประมวลผลแล้ว (`data/processed/`)
 

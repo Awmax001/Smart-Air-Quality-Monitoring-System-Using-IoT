@@ -31,27 +31,60 @@
 
 ## เริ่มใช้งาน
 
-### 1. เว็บแดชบอร์ด
+ทำตามลำดับนี้ ขั้นที่ 1–4 ทำได้เลยโดยยังไม่ต้องล็อก Database Rules
 
-เปิด `docs/index.html` ในเบราว์เซอร์ได้ทันที หรือเปิด GitHub Pages:
-**Settings → Pages → Deploy from a branch → `main` / `/docs`** แล้วเข้าที่ `https://<username>.github.io/<repo>/`
+### 1. Clone repo
 
-- ใส่รหัสสถานีที่ `air4thaiStation` ใน `docs/index.html` (หรือกดปุ่ม "ตั้งค่าการเชื่อมต่อ" บนหน้าเว็บ)
+```bash
+git clone https://github.com/Awmax001/Smart-Air-Quality-Monitoring-System-Using-IoT.git
+cd Smart-Air-Quality-Monitoring-System-Using-IoT
+```
+
+### 2. ESP32 (Arduino IDE)
+
+สรุปสั้น รายละเอียด วงจร และวิธีแก้ปัญหาอยู่ที่ [`firmware/esp32-air-monitor/README.md`](firmware/esp32-air-monitor/README.md)
+
+1. Arduino IDE 2.x → Preferences → Additional boards manager URLs:
+   `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
+2. Boards Manager → ติดตั้ง **esp32 by Espressif Systems**
+3. คัดลอก `firmware/esp32-air-monitor/config.example.h` เป็น `config.h` แล้วใส่ Wi-Fi (2.4 GHz)
+4. ตั้ง `USE_ENS160` / `USE_BME280` / `USE_MQ7` ตามเซนเซอร์ที่มี (ค่าเริ่มต้น 0 = มีแค่ PMS5003 ไม่ต้องลงไลบรารี)
+   เมื่อได้ ENS160 / BME280 มา ให้ลงไลบรารี **SparkFun Indoor Air Quality Sensor - ENS160** / **Adafruit BME280 Library** แล้วเปลี่ยนเป็น 1
+5. เปิด `esp32-air-monitor.ino` → Board **ESP32 Dev Module** → เลือก Port → Upload
+6. Serial Monitor 115200 ต้องเห็น `Firebase OK` ทุก 10 วินาที
+
+### 3. ตรวจข้อมูลใน Firebase
+
+Firebase Console → Realtime Database ต้องเห็น `/sensor` เปลี่ยนทุก 10 วินาที และ `/history` เพิ่มรายการ
+
+### 4. เว็บแดชบอร์ด
+
+ดับเบิลคลิก `docs/index.html` เปิดในเบราว์เซอร์ได้ทันที หรือเปิด GitHub Pages:
+**Settings → Pages → Deploy from a branch → `main` / `/docs`** แล้วเข้าที่ `https://awmax001.github.io/Smart-Air-Quality-Monitoring-System-Using-IoT/`
+
+- ไม่ต้องตั้งค่า Firebase ในหน้าเว็บ ค่า config ของโปรเจกต์ใส่ไว้ใน `docs/index.html` แล้ว และหน้าเว็บแค่อ่านข้อมูล จึงไม่ต้องล็อกอิน
+- หน้าเว็บเลือกเองว่าจะอ่าน `/history` (กราฟย้อนหลัง 24 ชม. ทันทีที่เปิด) หรือ `/sensor` (ถ้า ESP32 ยังใช้โค้ดเดิม) ถ้าเคยกดบันทึกการตั้งค่าไว้ก่อน ให้กด "ล้างค่าที่บันทึก" ในหน้าตั้งค่าหนึ่งครั้ง
 - แท็บพยากรณ์และแหล่งกำเนิดยังเป็นข้อมูลจำลอง (มีป้ายกำกับบนหน้าเว็บ) จนกว่าโมเดลใน `analysis/` จะเสร็จ
 
-### 2. ค่าสถานี Air4Thai → Firebase
+### 5. ค่าสถานี Air4Thai → Firebase
 
 เบราว์เซอร์ดึง Air4Thai ตรงไม่ได้ (CORS) จึงใช้สคริปต์เขียนค่าลง Firebase แทน
 
 ```bash
 pip install -r scripts/requirements.txt
-python scripts/air4thai_to_firebase.py --list ขอนแก่น          # หารหัสสถานี
+python scripts/air4thai_to_firebase.py --list ขอนแก่น              # หารหัสสถานี
 python scripts/air4thai_to_firebase.py --station <รหัส> --dry-run  # ทดสอบ
+python scripts/air4thai_to_firebase.py --station <รหัส> --once     # เขียนลง Firebase จริง
 ```
 
-ให้รันอัตโนมัติ: แก้ `STATION_ID` ใน `.github/workflows/air4thai.yml` แล้ว GitHub จะรันให้ทุกชั่วโมง (ดูผลที่แท็บ **Actions**)
+- ใส่รหัสเดียวกันที่ `air4thaiStation` ใน `docs/index.html` (หรือปุ่ม "ตั้งค่าการเชื่อมต่อ" บนหน้าเว็บ)
+- ให้รันเองทุกชั่วโมง: แก้ `STATION_ID` ใน `.github/workflows/air4thai.yml` แล้วดูผลที่แท็บ **Actions**
 
-### 3. ข้อมูลย้อนหลังและการวิเคราะห์
+### 6. ล็อก Database Rules
+
+ทำตาม [`firebase/README.md`](firebase/README.md): สร้างบัญชีอุปกรณ์และบัญชีสคริปต์ → เพิ่ม uid ลง `/writers` → ใส่ `DEVICE_EMAIL` / `DEVICE_PASSWORD` ใน `config.h` แล้วอัปโหลด ESP32 ใหม่ → ตั้ง GitHub Secrets → Publish rules
+
+### 7. ข้อมูลย้อนหลังและการวิเคราะห์
 
 ```bash
 python scripts/fetch_open_meteo.py --start 2024-11-01 --end 2025-04-30
@@ -76,7 +109,8 @@ jupyter lab analysis/notebooks
 - [x] เว็บแสดงผลเรียลไทม์ + GPS + กราฟ
 - [x] แดชบอร์ดอ่าน Firebase จริง + ค่าสถานี Air4Thai
 - [x] เอกสารเค้าโครงโครงงาน
-- [ ] ESP32 push ประวัติพร้อม timestamp ไป `/history` และล็อกอิน Firebase
+- [x] โค้ด ESP32 ส่ง `/sensor` + `/history` พร้อม timestamp และรองรับการล็อกอิน
+- [ ] อัปโหลดโค้ดใหม่ลงเครื่องจริงและล็อก Database Rules
 - [ ] เพิ่ม ENS160, MQ-7, BME280, PMS5003 ตัวที่ 2, SD card
 - [ ] รวบรวมข้อมูลย้อนหลัง A1–A5 และประเมินเซนเซอร์
 - [ ] โมเดลพยากรณ์ + backtest การแจ้งเตือน
