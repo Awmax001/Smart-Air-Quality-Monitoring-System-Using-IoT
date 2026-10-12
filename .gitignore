@@ -1,0 +1,35 @@
+# ---------- ความลับ (ห้าม push) ----------
+firmware/**/config.h
+.env
+*.env
+**/serviceAccount*.json
+**/*-firebase-adminsdk-*.json
+
+# ---------- ข้อมูลดิบ / ข้อมูลที่สร้างใหม่ได้ (ใหญ่ ไม่ต้องเก็บใน git) ----------
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/raw/firebase_export.json
+
+# ---------- Python / Jupyter ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ---------- Arduino / PlatformIO ----------
+.pio/
+build/
+*.bin
+*.elf
+
+# ---------- อื่นๆ ----------
+*.log
+.DS_Store
+Thumbs.db
+~$*.docx
+~$*.pptx
+.vscode/
+.idea/

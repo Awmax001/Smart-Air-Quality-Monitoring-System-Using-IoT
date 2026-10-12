@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบตรวจวัดคุณภาพอากาศ IoT</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root{
+    --bg:#0b1120;
+    --panel:#131c31;
+    --panel2:#1a2540;
+    --border:#243158;
+    --text:#e8ecf6;
+    --muted:#8e9bc4;
+    --good:#3ddc97;
+    --warn:#ffc857;
+    --bad:#ff5d6c;
+    --accent:#4f8dff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Segoe UI',-apple-system,sans-serif;
+    background:radial-gradient(circle at 20% 0%, #16213f 0%, var(--bg) 55%);
+    color:var(--text);
+    min-height:100vh;
+    padding:28px 20px 60px;
+  }
+  header{
+    max-width:1100px;
+    margin:0 auto 28px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  h1{font-size:22px;margin:0 0 4px;font-weight:700;letter-spacing:.2px;}
+  .sub{color:var(--muted);font-size:13px;}
+  .status{
+    display:flex;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid var(--border);
+    padding:8px 14px;border-radius:100px;font-size:13px;color:var(--muted);
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);}
+  .dot.live{background:var(--good);box-shadow:0 0 8px var(--good);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  .grid{
+    max-width:1100px;margin:0 auto;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:16px;
+    margin-bottom:20px;
+  }
+  .card{
+    background:linear-gradient(160deg,var(--panel2),var(--panel));
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:20px;
+    position:relative;
+    overflow:hidden;
+  }
+  .card .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;}
+  .card .value{font-size:36px;font-weight:800;line-height:1;}
+  .card .unit{font-size:13px;color:var(--muted);margin-left:4px;font-weight:500;}
+  .card .tag{
+    display:inline-block;margin-top:12px;font-size:11px;padding:3px 10px;border-radius:100px;font-weight:600;
+  }
+  .tag.good{background:rgba(61,220,151,.15);color:var(--good);}
+  .tag.warn{background:rgba(255,200,87,.15);color:var(--warn);}
+  .tag.bad{background:rgba(255,93,108,.15);color:var(--bad);}
+  .card::after{
+    content:'';position:absolute;top:0;right:0;width:70px;height:70px;
+    background:radial-gradient(circle,rgba(79,141,255,.18),transparent 70%);
+  }
+
+  .panel{
+    max-width:1100px;margin:0 auto;
+    background:var(--panel);border:1px solid var(--border);
+    border-radius:16px;padding:22px;
+  }
+  .panel h2{font-size:15px;margin:0 0 16px;color:var(--text);font-weight:600;}
+  canvas{max-height:280px;}
+
+  .empty{
+    text-align:center;color:var(--muted);font-size:13px;padding:60px 20px;
+  }
+  footer{
+    max-width:1100px;margin:20px auto 0;color:var(--muted);font-size:11px;text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ระบบตรวจวัดคุณภาพอากาศอัจฉริยะด้วย IoT</h1>
+    <div class="sub">ข้อมูลฝุ่นละอองแบบเรียลไทม์จาก PMS5003</div>
+  </div>
+  <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">กำลังเชื่อมต่อ...</span></div>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">PM 1.0</div>
+    <div class="value" id="pm1">--<span class="unit">µg/m³</span></div>
+    <span class="tag good" id="tag1">รอข้อมูล</span>
+  </div>
+  <div class="card">
+    <div class="label">PM 2.5</div>
+    <div class="value" id="pm25">--<span class="unit">µg/m³</span></div>
+    <span class="tag good" id="tag25">รอข้อมูล</span>
+  </div>
+  <div class="card">
+    <div class="label">PM 10</div>
+    <div class="value" id="pm10">--<span class="unit">µg/m³</span></div>
+    <span class="tag good" id="tag10">รอข้อมูล</span>
+  </div>
+  <div class="card">
+    <div class="label">อัปเดตล่าสุด</div>
+    <div class="value" id="lastUpdate" style="font-size:20px;">--</div>
+    <span class="tag good">เวลาปัจจุบัน</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>แนวโน้มค่าฝุ่นละออง (ย้อนหลัง)</h2>
+  <canvas id="chart"></canvas>
+  <div class="empty" id="emptyMsg">กำลังรอข้อมูลจาก Firebase...</div>
+</div>
+
+<footer>โปรเจกต์ระบบตรวจวัดคุณภาพอากาศอัจฉริยะด้วย IoT · Dashboard ทดสอบเบื้องต้น</footer>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBWNlV5O1PcqfnjyJk3RiMryhtGAVYal_I",
+    authDomain: "air-quality-project-7904c.firebaseapp.com",
+    databaseURL: "https://air-quality-project-7904c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "air-quality-project-7904c",
+    storageBucket: "air-quality-project-7904c.firebasestorage.app",
+    messagingSenderId: "162482519159",
+    appId: "1:162482519159:web:6a95b62a592906d2581a72",
+    measurementId: "G-JGGSM8JV6M"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const sensorRef = ref(db, "/sensor");
+
+  const chart = new Chart(document.getElementById("chart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "PM1.0", data: [], borderColor: "#4f8dff", tension: 0.35, pointRadius: 0 },
+        { label: "PM2.5", data: [], borderColor: "#ffc857", tension: 0.35, pointRadius: 0 },
+        { label: "PM10",  data: [], borderColor: "#ff5d6c", tension: 0.35, pointRadius: 0 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: "#8e9bc4" }, grid: { color: "#243158" } },
+        y: { ticks: { color: "#8e9bc4" }, grid: { color: "#243158" }, beginAtZero: true }
+      },
+      plugins: { legend: { labels: { color: "#e8ecf6" } } }
+    }
+  });
+
+  function tagFor(value, thresholds) {
+    if (value <= thresholds[0]) return ["ดี", "good"];
+    if (value <= thresholds[1]) return ["ปานกลาง", "warn"];
+    return ["สูงเกินมาตรฐาน", "bad"];
+  }
+
+  function setTag(id, value, thresholds) {
+    const [text, cls] = tagFor(value, thresholds);
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = "tag " + cls;
+  }
+
+  let received = false;
+
+  onValue(sensorRef, (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+    received = true;
+
+    document.getElementById("statusDot").classList.add("live");
+    document.getElementById("statusText").textContent = "เชื่อมต่อสำเร็จ · รับข้อมูลสด";
+    document.getElementById("emptyMsg").style.display = "none";
+
+    document.getElementById("pm1").innerHTML = data.pm1_0 + '<span class="unit">µg/m³</span>';
+    document.getElementById("pm25").innerHTML = data.pm2_5 + '<span class="unit">µg/m³</span>';
+    document.getElementById("pm10").innerHTML = data.pm10 + '<span class="unit">µg/m³</span>';
+    document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString("th-TH");
+
+    setTag("tag1", data.pm1_0, [15, 35]);
+    setTag("tag25", data.pm2_5, [15, 35]);
+    setTag("tag10", data.pm10, [50, 100]);
+
+    const t = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    chart.data.labels.push(t);
+    chart.data.datasets[0].data.push(data.pm1_0);
+    chart.data.datasets[1].data.push(data.pm2_5);
+    chart.data.datasets[2].data.push(data.pm10);
+
+    if (chart.data.labels.length > 20) {
+      chart.data.labels.shift();
+      chart.data.datasets.forEach(d => d.data.shift());
+    }
+    chart.update();
+  });
+
+  setTimeout(() => {
+    if (!received) {
+      document.getElementById("statusText").textContent = "ยังไม่ได้รับข้อมูล — เช็ค Firebase Rules ว่าเปิดเป็น true หรือยัง";
+    }
+  }, 8000);
+</script>
+
+</body>
+</html>

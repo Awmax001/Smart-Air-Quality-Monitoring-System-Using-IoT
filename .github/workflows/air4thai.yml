@@ -1,0 +1,26 @@
+# ดึงค่าสถานี Air4Thai ทุกชั่วโมงแล้วเขียนลง Firebase (ไม่ต้องเปิดคอมทิ้งไว้)
+# ก่อนใช้:
+#   1) แก้ STATION_ID ด้านล่างเป็นรหัสจริง (ดูด้วย: python scripts/air4thai_to_firebase.py --list ขอนแก่น)
+#   2) ถ้าใช้ firebase/database.rules.json ที่ล็อกการเขียนแล้ว ให้เพิ่ม Secrets ใน
+#      Settings > Secrets and variables > Actions:  FIREBASE_EMAIL, FIREBASE_PASSWORD
+name: Air4Thai to Firebase
+
+on:
+  schedule:
+    - cron: "17 * * * *"     # ทุกชั่วโมง นาทีที่ 17 (เวลา UTC) Air4Thai อัปเดตรายชั่วโมง
+  workflow_dispatch:          # กดรันเองได้จากแท็บ Actions
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r scripts/requirements.txt
+      # ใส่ได้หลายสถานี เช่น --station 46t XXt (ขอนแก่น + มหาสารคาม)
+      - run: python scripts/air4thai_to_firebase.py --station STATION_ID --once
+        env:
+          FIREBASE_EMAIL: ${{ secrets.FIREBASE_EMAIL }}
+          FIREBASE_PASSWORD: ${{ secrets.FIREBASE_PASSWORD }}

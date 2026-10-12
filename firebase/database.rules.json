@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "sensor": {
+      ".read": true,
+      ".write": "auth != null && root.child('writers').child(auth.uid).val() === true"
+    },
+    "history": {
+      ".read": true,
+      ".write": "auth != null && root.child('writers').child(auth.uid).val() === true"
+    },
+    "air4thai": {
+      ".read": true,
+      ".write": "auth != null && root.child('writers').child(auth.uid).val() === true"
+    },
+    "air4thai_history": {
+      ".read": true,
+      ".write": "auth != null && root.child('writers').child(auth.uid).val() === true"
+    },
+    "writers": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

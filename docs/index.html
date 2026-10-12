@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Air Quality Monitoring</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>[hidden]{display:none!important}img{max-width:100%}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<style>
+/* Layout: sticky header + tab strip, one working panel per tab; summary first, detail below */
+:root{
+  --bg:#f4f6f4; --surface:#ffffff; --surface-2:#eef2ef; --ink:#13201b; --muted:#56645e; --faint:#8a9690;
+  --line:#dbe2de; --accent:#0e6b5c; --accent-ink:#ffffff; --accent-soft:#dcefe9;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --div-lo:#2a78d6; --div-mid:#e9ebe9; --div-hi:#e34948;
+  --aqi1:#3bb3e8; --aqi2:#4fbf5a; --aqi3:#f2c919; --aqi4:#f08a24; --aqi5:#e0423f;
+  --band-op:.13; --warn-bg:#fff4d6; --warn-ink:#6b4b00;
+  --f-display:"Bai Jamjuree","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --surface:#171f1c; --surface-2:#1e2824; --ink:#e7eeea; --muted:#a3b1ab; --faint:#7b8983;
+  --line:#2b3732; --accent:#46b9a3; --accent-ink:#0b1210; --accent-soft:#1d3a33;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
+  --band-op:.16; --warn-bg:#3a3010; --warn-ink:#f5d98a; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#171f1c; --surface-2:#1e2824; --ink:#e7eeea; --muted:#a3b1ab; --faint:#7b8983;
+  --line:#2b3732; --accent:#46b9a3; --accent-ink:#0b1210; --accent-soft:#1d3a33;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --div-lo:#3987e5; --div-mid:#383835; --div-hi:#e66767;
+  --band-op:.16; --warn-bg:#3a3010; --warn-ink:#f5d98a; color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 48px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:1.45rem;font-weight:700}
+h2{font-size:1.12rem;font-weight:600}
+h3{font-size:.98rem;font-weight:600}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:.82rem}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--bg);border-bottom:1px solid var(--line)}
+.head-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 20px;padding-block:14px 10px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand .sub{font-size:.85rem;color:var(--muted)}
+.live{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--aqi2);box-shadow:0 0 0 3px color-mix(in srgb,var(--aqi2) 25%,transparent)}
+.dot.off{background:var(--faint);box-shadow:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;font-size:.85rem}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:0}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:none;padding:9px 14px 10px;font-size:.92rem;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.notice{display:flex;gap:10px;align-items:flex-start;background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:9px 12px;font-size:.86rem;margin-top:16px}
+.notice b{font-weight:600}
+section.panel{display:flex;flex-direction:column;gap:16px;margin-top:16px}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+@media (max-width:900px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3,.g21{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:620px){.g2{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:440px){.g4{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.card-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 12px;margin-bottom:10px}
+.kpi .label{font-size:.82rem;color:var(--muted);letter-spacing:.02em}
+.kpi .val{font-family:var(--f-mono);font-size:2rem;font-weight:500;line-height:1.1;margin-top:4px}
+.kpi .unit{font-size:.8rem;color:var(--muted);margin-left:4px;font-family:var(--f-body)}
+.kpi .foot{margin-top:8px;font-size:.82rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600;border:1px solid transparent}
+.pill .sw{width:8px;height:8px;border-radius:50%}
+.pill.aqi{color:#13201b}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:.74rem;color:var(--muted);background:var(--surface-2)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.82rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg-line{width:18px;height:0;border-top:2px solid}
+.lg-dash{width:18px;height:0;border-top:2px dashed}
+.lg-box{width:12px;height:12px;border-radius:3px}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:.8rem;box-shadow:0 6px 20px rgba(0,0,0,.12);white-space:nowrap;z-index:5;transform:translate(-50%,-110%)}
+.tip .t{color:var(--muted);font-size:.74rem;margin-bottom:2px}
+.tip .r{display:flex;align-items:center;gap:6px}
+.tip .sw{width:9px;height:9px;border-radius:2px}
+.gas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.gas .g{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.gas .g .v{font-family:var(--f-mono);font-size:1.25rem}
+.bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.78rem;letter-spacing:.02em}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tw{overflow-x:auto}
+.better{color:var(--aqi2);font-weight:600}
+.line-msg{border-radius:14px;background:var(--surface-2);padding:12px 14px;font-size:.88rem;max-width:360px}
+.line-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.8rem;color:var(--muted)}
+.line-ic{width:26px;height:26px;border-radius:7px;background:#06c755;color:#fff;font-weight:700;display:grid;place-items:center;font-size:.7rem;font-family:var(--f-mono)}
+.steps{display:flex;flex-direction:column;gap:0}
+.step{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.step:last-child{border-bottom:0}
+.st{font-size:.76rem;font-weight:600;border-radius:999px;padding:2px 10px;text-align:center;white-space:nowrap}
+.st.done{background:color-mix(in srgb,var(--aqi2) 18%,transparent);color:var(--ink)}
+.st.doing{background:color-mix(in srgb,var(--aqi3) 30%,transparent);color:var(--ink)}
+.st.plan{background:var(--surface-2);color:var(--muted)}
+.step .when{font-size:.8rem;color:var(--muted);font-family:var(--f-mono);white-space:nowrap}
+@media (max-width:560px){.step{grid-template-columns:minmax(0,1fr) auto}.step .st{grid-column:1/-1;justify-self:start}}
+.map-wrap{position:relative}
+.cell{stroke:var(--surface);stroke-width:2}
+.cell:hover{stroke:var(--ink)}
+.zone-lab{font-family:var(--f-body)!important;font-size:12px!important;fill:var(--muted)}
+.scale{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted);flex-wrap:wrap}
+.scale .grad{width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--div-lo),var(--div-mid),var(--div-hi))}
+ol.hot{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.foot-note{font-size:.78rem;color:var(--faint);margin-top:6px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.notice.ok{background:color-mix(in srgb,var(--aqi2) 16%,var(--surface));color:var(--ink)}
+.notice.err{background:color-mix(in srgb,var(--aqi5) 16%,var(--surface));color:var(--ink)}
+.notice.info{background:var(--surface-2);color:var(--ink)}
+.sim-note{font-size:.82rem;color:var(--warn-ink);background:var(--warn-bg);border-radius:8px;padding:6px 10px;align-self:flex-start}
+#realMap{height:420px;border-radius:8px;border:1px solid var(--line);z-index:0}
+@media (max-width:620px){#realMap{height:320px}}
+.cfg textarea{width:100%;min-height:320px;font-family:var(--f-mono);font-size:.8rem;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface-2);color:var(--ink)}
+.cfg .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cfg ol{margin:6px 0 0;padding-left:20px;font-size:.86rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap" style="padding-block:0">
+    <div class="head-row">
+      <div class="brand">
+        <h1>ระบบตรวจวัดคุณภาพอากาศอัจฉริยะด้วย IoT</h1>
+        <div class="sub">Smart Air Quality Monitoring System Using IoT · พื้นที่กรณีศึกษา เขตเมืองขอนแก่น</div>
+      </div>
+      <div class="live">
+        <span class="dot" id="liveDot"></span>
+        <span class="small muted" id="liveText">อัปเดตล่าสุด —</span>
+        <button class="btn" id="cfgBtn" type="button">ตั้งค่าการเชื่อมต่อ</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="ส่วนของระบบ">
+      <button class="tab" role="tab" id="t-overview" aria-selected="true" aria-controls="p-overview">ภาพรวมเรียลไทม์</button>
+      <button class="tab" role="tab" id="t-forecast" aria-selected="false" aria-controls="p-forecast">พยากรณ์และแจ้งเตือน</button>
+      <button class="tab" role="tab" id="t-map" aria-selected="false" aria-controls="p-map">แผนที่จุดเสี่ยง</button>
+      <button class="tab" role="tab" id="t-source" aria-selected="false" aria-controls="p-source">แหล่งกำเนิดมลพิษ</button>
+      <button class="tab" role="tab" id="t-progress" aria-selected="false" aria-controls="p-progress">ความคืบหน้า</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="notice info" id="srcNotice" role="status"><span aria-hidden="true">●</span><div id="srcText">กำลังเริ่มต้น …</div></div>
+
+  <section class="card cfg" id="cfgPanel" hidden style="margin-top:16px">
+    <div class="card-h"><h2>ตั้งค่าการเชื่อมต่อ Firebase</h2><span class="small muted">บันทึกไว้ในเบราว์เซอร์เครื่องนี้</span></div>
+    <ol>
+      <li>ตั้งค่าไว้ให้แล้วตาม dashboard.html เดิม: Realtime Database ที่ <span class="num">/sensor</span> ฟิลด์ <span class="num">pm1_0</span>, <span class="num">pm2_5</span>, <span class="num">pm10</span></li>
+      <li>ถ้า ESP32 ส่งฟิลด์อื่นเพิ่ม เช่น ก๊าซ อุณหภูมิ หรือพิกัด GPS ให้ใส่ชื่อฟิลด์นั้นใน <span class="num">fields</span> (ฟิลด์ซ้อนใช้จุด เช่น <span class="num">"gps.lat"</span>)</li>
+      <li>ถ้า ESP32 push รายการใหม่ทุกครั้งที่วัด ให้ตั้ง <span class="num">rtdbMode</span> เป็น <span class="num">"list"</span> และใส่ path ของรายการนั้นใน <span class="num">rtdbPath</span></li>
+      <li>ใส่รหัสสถานี Air4Thai ขอนแก่นใน <span class="num">air4thaiStation</span> และรันสคริปต์ <span class="num">air4thai_to_firebase.py</span> เพื่อให้มีค่าสถานีใน Firebase</li>
+    </ol>
+    <label for="cfgText" class="small muted" style="display:block;margin-top:10px">ค่าตั้ง (JSON)</label>
+    <textarea id="cfgText" spellcheck="false"></textarea>
+    <div class="row"><button class="btn primary" id="cfgSave" type="button">บันทึกและเชื่อมต่อ</button><button class="btn" id="cfgReset" type="button">ล้างค่าที่บันทึก</button><span class="small" id="cfgMsg" role="status"></span></div>
+  </section>
+
+  <!-- ===== Overview ===== -->
+  <section class="panel" id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+    <div class="grid g4">
+      <div class="card kpi">
+        <div class="label">PM2.5 เครื่องของโครงงาน</div>
+        <div class="val"><span id="kOurs">—</span><span class="unit">µg/m³</span></div>
+        <div class="foot"><span class="pill aqi" id="kOursPill"></span><span id="kOursNote">ค่าเฉลี่ย 1 ชม.</span></div>
+      </div>
+      <div class="card kpi">
+        <div class="label">PM2.5 สถานี Air4Thai ขอนแก่น</div>
+        <div class="val"><span id="kSta">—</span><span class="unit">µg/m³</span></div>
+        <div class="foot"><span class="pill aqi" id="kStaPill"></span><span id="kStaNote">ค่ารายชั่วโมง</span></div>
+      </div>
+      <div class="card kpi">
+        <div class="label">ต่างจากสถานี</div>
+        <div class="val"><span id="kDiff">—</span><span class="unit">%</span></div>
+        <div class="foot"><span>อัตราส่วน <span class="num" id="kRatio">—</span> เท่าของค่าสถานี</span></div>
+      </div>
+      <div class="card kpi">
+        <div class="label">สถานะเครื่อง</div>
+        <div class="val" style="font-size:1.5rem"><span id="kComp">—</span><span class="unit" id="kCompUnit"></span></div>
+        <div class="foot"><span>ส่งข้อมูลล่าสุด <span class="num" id="kLast">—</span></span><span id="kCount"></span></div>
+      </div>
+    </div>
+
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h">
+          <h2 id="ovTitle">PM2.5 ย้อนหลัง</h2>
+          <div class="legend">
+            <span><i class="lg-line" style="border-color:var(--s1)"></i>เครื่องของโครงงาน</span>
+            <span><i class="lg-line" style="border-color:var(--s2)"></i>สถานี Air4Thai</span>
+            <span><i class="lg-dash" style="border-color:var(--ink)"></i>มาตรฐานไทย 37.5</span>
+            <span><i class="lg-dash" style="border-color:var(--faint)"></i>WHO 15</span>
+          </div>
+        </div>
+        <div class="chart" id="cOverview"></div>
+        <p class="foot-note" id="ovEmpty" hidden>ยังไม่มีค่า PM2.5 ในช่วงเวลานี้ ตรวจชื่อฟิลด์ pm25 ใน "ตั้งค่าการเชื่อมต่อ"</p>
+        <div class="legend" style="margin-top:8px" aria-label="ระดับคุณภาพอากาศ">
+          <span><i class="lg-box" style="background:var(--aqi1)"></i>ดีมาก 0–15</span>
+          <span><i class="lg-box" style="background:var(--aqi2)"></i>ดี 15.1–25</span>
+          <span><i class="lg-box" style="background:var(--aqi3)"></i>ปานกลาง 25.1–37.5</span>
+          <span><i class="lg-box" style="background:var(--aqi4)"></i>เริ่มมีผลกระทบ 37.6–75</span>
+          <span><i class="lg-box" style="background:var(--aqi5)"></i>มีผลกระทบ &gt;75</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>ค่าอื่นจากเซนเซอร์</h2><span class="chip">ก๊าซเป็นค่าเชิงสัมพัทธ์</span></div>
+        <div class="gas">
+          <div class="g"><div class="small muted">PM1.0 (PMS5003)</div><div class="v"><span id="gPm1">—</span> <span class="small muted">µg/m³</span></div></div>
+          <div class="g"><div class="small muted">PM10 (PMS5003)</div><div class="v"><span id="gPm10">—</span> <span class="small muted">µg/m³</span></div></div>
+          <div class="g"><div class="small muted">TVOC (ENS160)</div><div class="v"><span id="gTvoc">—</span> <span class="small muted">ppb</span></div><div class="bar"><i id="bTvoc"></i></div></div>
+          <div class="g"><div class="small muted">eCO₂ (ENS160)</div><div class="v"><span id="gEco2">—</span> <span class="small muted">ppm</span></div><div class="bar"><i id="bEco2"></i></div></div>
+          <div class="g"><div class="small muted">ดัชนี CO (MQ-7)</div><div class="v"><span id="gCo">—</span> <span class="small muted">/100</span></div><div class="bar"><i id="bCo"></i></div></div>
+          <div class="g"><div class="small muted">AQI-UBA (ENS160)</div><div class="v"><span id="gUba">—</span> <span class="small muted">/5</span></div><div class="bar"><i id="bUba"></i></div></div>
+          <div class="g"><div class="small muted">อุณหภูมิ (BME280)</div><div class="v"><span id="gT">—</span> <span class="small muted">°C</span></div></div>
+          <div class="g"><div class="small muted">ความชื้น (BME280)</div><div class="v"><span id="gRh">—</span> <span class="small muted">%RH</span></div></div>
+        </div>
+        <p class="foot-note">ค่าล่าสุดจากเครื่อง ค่าก๊าซใช้ดูแนวโน้มและลายเซ็นแหล่งกำเนิด ไม่ใช้แจ้งเตือนด้านสุขภาพ ช่องที่ขึ้น — คือยังไม่มีฟิลด์นั้นในข้อมูล</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Forecast ===== -->
+  <section class="panel" id="p-forecast" role="tabpanel" aria-labelledby="t-forecast" hidden>
+    <div class="sim-note">แท็บนี้เป็นข้อมูลจำลอง แสดงหน้าตาของส่วนพยากรณ์ที่กำลังพัฒนา</div>
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h">
+          <h2>พยากรณ์ PM2.5 ล่วงหน้า 6 ชั่วโมง</h2>
+          <div class="legend">
+            <span><i class="lg-line" style="border-color:var(--s1)"></i>ค่าจริง</span>
+            <span><i class="lg-dash" style="border-color:var(--s1)"></i>แบบจำลอง XGBoost</span>
+            <span><i class="lg-box" style="background:color-mix(in srgb,var(--s1) 22%,transparent)"></i>ช่วงความเชื่อมั่น 80%</span>
+            <span><i class="lg-dash" style="border-color:var(--faint)"></i>Persistence (ฐานเทียบ)</span>
+          </div>
+        </div>
+        <div class="chart" id="cForecast"></div>
+        <p class="foot-note">ฝึกจากข้อมูลสถานี Air4Thai ย้อนหลังร่วมกับข้อมูลอากาศ แบ่งข้อมูลฝึกและทดสอบตามลำดับเวลา</p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>ตัวอย่างการแจ้งเตือน LINE</h2></div>
+        <div class="line-msg">
+          <div class="line-head"><span class="line-ic">LINE</span>Smart Air ขอนแก่น · <span class="num" id="lineTime">—</span></div>
+          <div><b>คาดว่า PM2.5 จะเกินมาตรฐานใน <span id="lineLead">—</span> ชั่วโมง</b></div>
+          <div style="margin-top:4px">ค่าพยากรณ์สูงสุด <span class="num" id="linePeak">—</span> µg/m³ (เกณฑ์ 37.5)</div>
+          <div style="margin-top:8px" class="small">คำแนะนำเบื้องต้น: ลดกิจกรรมกลางแจ้ง กลุ่มเสี่ยง เด็ก ผู้สูงอายุ และผู้ป่วยโรคทางเดินหายใจ ควรสวมหน้ากากเมื่อออกนอกอาคาร</div>
+          <div class="foot-note">อ้างอิงคำแนะนำกรมอนามัย</div>
+        </div>
+      </div>
+    </div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h"><h2>ความแม่นยำตามช่วงพยากรณ์</h2><span class="chip">ตัวอย่าง</span></div>
+        <div class="tw"><table>
+          <thead><tr><th>ล่วงหน้า</th><th class="n">RMSE แบบจำลอง</th><th class="n">RMSE Persistence</th><th class="n">ดีขึ้น</th></tr></thead>
+          <tbody id="accRows"></tbody>
+        </table></div>
+        <p class="foot-note">หน่วย µg/m³ ค่ายิ่งต่ำยิ่งดี</p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>ความสามารถในการเตือนภัย (ย้อนทดสอบฤดูฝุ่น)</h2><span class="chip">ตัวอย่าง</span></div>
+        <div class="grid g3" style="gap:12px">
+          <div class="kpi"><div class="label">จับเหตุการณ์ได้</div><div class="val" style="font-size:1.6rem">78<span class="unit">%</span></div></div>
+          <div class="kpi"><div class="label">เตือนผิด</div><div class="val" style="font-size:1.6rem">14<span class="unit">%</span></div></div>
+          <div class="kpi"><div class="label">เตือนล่วงหน้าเฉลี่ย</div><div class="val" style="font-size:1.6rem">3.2<span class="unit">ชม.</span></div></div>
+        </div>
+        <p class="foot-note">เหตุการณ์ = ชั่วโมงที่ PM2.5 เฉลี่ยเกิน 37.5 µg/m³ เทียบกับการดูค่าปัจจุบันอย่างเดียวซึ่งเตือนล่วงหน้าได้ 0 ชั่วโมง ในระบบจริงจะเพิ่มการพยากรณ์ AQI หลายมลพิษจากสถานีมหาสารคาม</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Map ===== -->
+  <section class="panel" id="p-map" role="tabpanel" aria-labelledby="t-map" hidden>
+    <div class="card">
+      <div class="card-h">
+        <h2>ตำแหน่งที่วัดจริงจาก GPS</h2>
+        <div class="legend">
+          <span><i class="lg-box" style="background:var(--aqi1);border-radius:50%"></i>ดีมาก</span>
+          <span><i class="lg-box" style="background:var(--aqi2);border-radius:50%"></i>ดี</span>
+          <span><i class="lg-box" style="background:var(--aqi3);border-radius:50%"></i>ปานกลาง</span>
+          <span><i class="lg-box" style="background:var(--aqi4);border-radius:50%"></i>เริ่มมีผลกระทบ</span>
+          <span><i class="lg-box" style="background:var(--aqi5);border-radius:50%"></i>มีผลกระทบ</span>
+        </div>
+      </div>
+      <div id="realMap" role="img" aria-label="แผนที่จุดที่วัดจริง สีตามค่า PM2.5"></div>
+      <p class="foot-note" id="realMapNote">แสดงเมื่อเชื่อมต่อข้อมูลจริง</p>
+    </div>
+    <div class="sim-note">ส่วนด้านล่างเป็นข้อมูลจำลอง แสดงผลวิเคราะห์ที่จะได้หลังตรวจวัดแบบเคลื่อนที่ครบ 12 รอบ</div>
+    <div class="grid g21">
+      <div class="card">
+        <div class="card-h">
+          <h2>ค่าฝุ่นเทียบสถานีตามเส้นทางตรวจวัด</h2>
+          <div class="scale"><span>ต่ำกว่าสถานี</span><span class="grad"></span><span>สูงกว่าสถานี</span></div>
+        </div>
+        <div class="map-wrap chart" id="cMap"></div>
+        <p class="foot-note">ผังจำลอง ไม่ใช่แผนที่จริง ช่องละประมาณ 100 ม. ค่าในช่องคือมัธยฐานของอัตราส่วน (เครื่องของโครงงาน ÷ สถานี ในชั่วโมงเดียวกัน) จาก 12 รอบการตรวจวัด ชี้ที่ช่องเพื่อดูรายละเอียด</p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>จุดเสี่ยงสูงสุด</h2></div>
+        <ol class="hot" id="hotList"></ol>
+        <h3 style="margin-top:18px">เฉลี่ยตามประเภทพื้นที่</h3>
+        <div class="tw"><table style="margin-top:6px"><thead><tr><th>ประเภทพื้นที่</th><th class="n">เทียบสถานี</th></tr></thead><tbody id="zoneRows"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Source ===== -->
+  <section class="panel" id="p-source" role="tabpanel" aria-labelledby="t-source" hidden>
+    <div class="sim-note">แท็บนี้เป็นข้อมูลจำลอง แสดงหน้าตาของการวิเคราะห์ที่จะทำหลังเก็บข้อมูลช่วงฤดูฝุ่น</div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-h">
+          <h2>ลายเซ็นของเหตุการณ์ฝุ่นพุ่ง</h2>
+          <div class="legend">
+            <span><i class="lg-box" style="background:var(--s2);border-radius:50%"></i>กลุ่ม A: คล้ายควันเผา</span>
+            <span><i class="lg-box" style="background:var(--s1);border-radius:50%"></i>กลุ่ม B: คล้ายการจราจร</span>
+          </div>
+        </div>
+        <div class="chart" id="cScatter"></div>
+        <p class="foot-note">แต่ละจุดคือเหตุการณ์ที่ PM2.5 เพิ่มขึ้นเร็ว จัดกลุ่มด้วย k-means จากการเปลี่ยนแปลงของ TVOC และ CO ที่เกิดพร้อมกัน (ค่าเชิงสัมพัทธ์ เป็นการวิเคราะห์เชิงสำรวจ)</p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>จุดความร้อนต้นลมกับ PM2.5 รายวัน</h2><span class="chip">NASA FIRMS · รัศมี 100 กม.</span></div>
+        <div class="chart" id="cFireBars"></div>
+        <div class="chart" id="cFirePm" style="margin-top:4px"></div>
+        <p class="foot-note">สองกราฟใช้แกนเวลาเดียวกัน วันที่ PM2.5 เกินเกณฑ์ (แถบส้ม) มีจุดความร้อนต้นลมมากกว่าวันปกติ แสดงความสัมพันธ์ ไม่ใช่การพิสูจน์สาเหตุ</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>สรุปหลักฐานชุด "เพราะอะไร"</h2><span class="chip">ตัวอย่าง</span></div>
+      <div class="tw"><table>
+        <thead><tr><th></th><th class="n">วันที่ฝุ่นเกินเกณฑ์</th><th class="n">วันปกติ</th></tr></thead>
+        <tbody>
+          <tr><td>จำนวนวัน</td><td class="n">23</td><td class="n">67</td></tr>
+          <tr><td>จุดความร้อนต้นลม (มัธยฐาน จุด/วัน)</td><td class="n">41</td><td class="n">9</td></tr>
+          <tr><td>สัดส่วนเหตุการณ์กลุ่ม A (คล้ายควันเผา)</td><td class="n">65%</td><td class="n">22%</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ===== Progress ===== -->
+  <section class="panel" id="p-progress" role="tabpanel" aria-labelledby="t-progress" hidden>
+    <div class="card">
+      <div class="card-h"><h2>ความคืบหน้าของโครงงาน</h2><span class="small muted">ณ วันที่ 13 ต.ค. 2569</span></div>
+      <div class="steps" id="steps"></div>
+    </div>
+  </section>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* =====================================================================
+   ตั้งค่าการเชื่อมต่อ  (แก้ตรงนี้ หรือกดปุ่ม "ตั้งค่าการเชื่อมต่อ" บนหน้าเว็บ)
+   ===================================================================== */
+const DEFAULT_CONFIG = {
+  backend: "rtdb",                  // "rtdb" = Firebase Realtime Database | "firestore"
+  firebase: {                       // ค่าจาก dashboard.html เดิมของโปรเจกต์
+    apiKey: "AIzaSyBWNlV5O1PcqfnjyJk3RiMryhtGAVYal_I",
+    authDomain: "air-quality-project-7904c.firebaseapp.com",
+    databaseURL: "https://air-quality-project-7904c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "air-quality-project-7904c"
+  },
+  // --- Realtime Database ---
+  rtdbPath: "/sensor",              // node ที่ ESP32 เขียนค่าล่าสุด
+  rtdbMode: "node",                 // "node" = เขียนทับค่าเดียว | "list" = ESP32 push เพิ่มรายการใหม่ทุกครั้ง
+  // --- Firestore ---
+  mode: "collection",               // "collection" | "doc"
+  collection: "sensorData",
+  docPath: "devices/esp32",
+  // --- ใช้ร่วมกัน ---
+  timeField: "timestamp",           // ถ้าไม่มีฟิลด์เวลา ระบบใช้เวลาที่ได้รับข้อมูลแทน
+  fields: {                         // ชื่อฟิลด์ที่ ESP32 ส่ง (ถ้าไม่มีให้เว้นว่าง "")
+    pm25: "pm2_5", pm10: "pm10", pm1: "pm1_0",
+    tvoc: "tvoc", eco2: "eco2", co: "co", aqiUba: "aqi",
+    temp: "temperature", rh: "humidity",
+    lat: "lat", lng: "lng"
+  },
+  air4thaiStation: "",              // รหัสสถานี Air4Thai ขอนแก่น (ดูด้วย: python air4thai_to_firebase.py --list ขอนแก่น)
+  air4thaiViaFirebase: true,        // true = อ่านค่าที่สคริปต์ air4thai_to_firebase.py เขียนไว้ใน /air4thai
+  historyHours: 24,
+  maxDocs: 3000
+};
+/* ===================================================================== */
+
+(function () {
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const fmtT = d => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  const fmtD = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  const H = 3600e3;
+  const LEVELS = [
+    { max: 15, name: 'ดีมาก', c: '--aqi1' }, { max: 25, name: 'ดี', c: '--aqi2' },
+    { max: 37.5, name: 'ปานกลาง', c: '--aqi3' }, { max: 75, name: 'เริ่มมีผลกระทบ', c: '--aqi4' },
+    { max: 1e9, name: 'มีผลกระทบ', c: '--aqi5' }];
+  const level = v => LEVELS.find(l => v <= l.max);
+  function setPill(node, v) {
+    if (v == null || isNaN(v)) { node.textContent = 'ไม่มีข้อมูล'; node.style.background = 'var(--surface-2)'; return; }
+    const l = level(v); node.innerHTML = '<i class="sw" style="background:#13201b33"></i>' + l.name; node.style.background = 'var(' + l.c + ')';
+  }
+
+  // ---------- config ----------
+  function loadConfig() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('sa-config') || 'null'); } catch (e) { }
+    const c = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    if (saved) { Object.assign(c, saved); c.firebase = Object.assign({}, DEFAULT_CONFIG.firebase, saved.firebase || {}); c.fields = Object.assign({}, DEFAULT_CONFIG.fields, saved.fields || {}); }
+    return c;
+  }
+  const CONFIG = loadConfig();
+  $('cfgText').value = JSON.stringify(CONFIG, null, 2);
+  $('cfgBtn').addEventListener('click', () => { $('cfgPanel').hidden = !$('cfgPanel').hidden; });
+  $('cfgSave').addEventListener('click', () => {
+    try { const v = JSON.parse($('cfgText').value); localStorage.setItem('sa-config', JSON.stringify(v)); $('cfgMsg').textContent = 'บันทึกแล้ว กำลังโหลดหน้าใหม่'; setTimeout(() => location.reload(), 400); }
+    catch (e) { $('cfgMsg').textContent = 'รูปแบบ JSON ไม่ถูกต้อง: ' + e.message; }
+  });
+  $('cfgReset').addEventListener('click', () => { try { localStorage.removeItem('sa-config'); } catch (e) { } location.reload(); });
+
+  function setStatus(kind, text) {
+    const n = $('srcNotice'); n.className = 'notice ' + kind; $('srcText').innerHTML = text;
+  }
+
+  // ---------- generic line chart ----------
+  function lineChart(host, cfg) {
+    host.innerHTML = '';
+    const W = Math.min(900, Math.max(340, host.clientWidth || 720)), Hh = cfg.h || (W < 520 ? 230 : 260), m = { l: 40, r: 14, t: 12, b: 28 };
+    const svg = el('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': cfg.label }, host);
+    const xs = cfg.x0, xe = cfg.x1 > cfg.x0 ? cfg.x1 : cfg.x0 + H, ymax = cfg.ymax;
+    const X = t => m.l + (t - xs) / (xe - xs) * (W - m.l - m.r);
+    const Y = v => Hh - m.b - Math.min(v, ymax) / ymax * (Hh - m.t - m.b);
+    if (cfg.bands) { let lo = 0; LEVELS.forEach(L => { const hi = Math.min(L.max, ymax); if (hi > lo) el('rect', { x: m.l, y: Y(hi), width: W - m.l - m.r, height: Y(lo) - Y(hi), fill: css(L.c), opacity: css('--band-op') }, svg); lo = L.max; }); }
+    for (let v = 0; v <= ymax; v += cfg.ystep) { el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css('--line'), 'stroke-width': 1 }, svg); const tx = el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end' }, svg); tx.textContent = v; }
+    cfg.xticks.forEach(tk => { const tx = el('text', { x: X(tk.t), y: Hh - 8, 'text-anchor': X(tk.t) > W - m.r - 20 ? 'end' : 'middle' }, svg); tx.textContent = tk.l; });
+    (cfg.thresholds || []).forEach(th => { el('line', { x1: m.l, x2: W - m.r, y1: Y(th.v), y2: Y(th.v), stroke: css(th.c), 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, svg); const tx = el('text', { x: W - m.r, y: Y(th.v) - 5, 'text-anchor': 'end' }, svg); tx.textContent = th.l; });
+    (cfg.areas || []).forEach(a => { const d = a.pts.map((p, i) => (i ? 'L' : 'M') + X(p.t) + ' ' + Y(p.hi)).join(' ') + ' ' + a.pts.slice().reverse().map(p => 'L' + X(p.t) + ' ' + Y(p.lo)).join(' ') + ' Z'; el('path', { d, fill: css(a.c), opacity: .2 }, svg); });
+    cfg.series.forEach(s => {
+      if (!s.pts.length) return;
+      // break the line where data has gaps
+      let d = '', prev = null;
+      s.pts.forEach(p => { const gap = prev && s.gap && (p.t - prev.t) > s.gap; d += (prev && !gap ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1) + ' '; prev = p; });
+      el('path', { d, fill: 'none', stroke: css(s.c), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dash || '' }, svg);
+      if (s.endDot) { const p = s.pts[s.pts.length - 1]; el('circle', { cx: X(p.t), cy: Y(p.v), r: 4.5, fill: css(s.c), stroke: css('--surface'), 'stroke-width': 2 }, svg); }
+    });
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; host.appendChild(tip);
+    const cross = el('line', { y1: m.t, y2: Hh - m.b, stroke: css('--faint'), 'stroke-width': 1, opacity: 0 }, svg);
+    const hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: Hh - m.t - m.b, fill: 'transparent' }, svg);
+    const allT = [...new Set(cfg.series.flatMap(s => s.pts.map(p => +p.t)))].sort((a, b) => a - b);
+    if (!allT.length) return;
+    function move(ev) {
+      const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) / r.width * W;
+      const t = xs + (px - m.l) / (W - m.l - m.r) * (xe - xs);
+      let best = allT[0]; allT.forEach(x => { if (Math.abs(x - t) < Math.abs(best - t)) best = x; });
+      cross.setAttribute('x1', X(best)); cross.setAttribute('x2', X(best)); cross.setAttribute('opacity', 1);
+      const rows = cfg.series.map(s => { let p = null, bd = Infinity; s.pts.forEach(q => { const dd = Math.abs(+q.t - best); if (dd < bd) { bd = dd; p = q; } }); return p && bd <= (s.tol || 0) ? `<div class="r"><i class="sw" style="background:${css(s.c)}"></i>${s.name} <b class="num">${p.v.toFixed(1)}</b></div>` : ''; }).join('');
+      tip.innerHTML = `<div class="t">${fmtD(new Date(best))} ${fmtT(new Date(best))}</div>${rows}`;
+      tip.hidden = false; tip.style.top = (m.t / Hh * r.height + 8) + 'px';
+      const half = tip.offsetWidth / 2, left = X(best) / W * r.width;
+      tip.style.left = Math.min(Math.max(left, half), r.width - half) + 'px';
+    }
+    hit.addEventListener('pointermove', move); hit.addEventListener('pointerdown', move);
+    hit.addEventListener('pointerleave', () => { tip.hidden = true; cross.setAttribute('opacity', 0); });
+  }
+
+  // =====================================================================
+  //  REAL DATA (Firestore)
+  // =====================================================================
+  const store = { rows: [], station: null, stationHist: [], lastUpdate: null, live: false };
+  const num = v => { if (v === null || v === undefined || v === '') return null; const n = typeof v === 'number' ? v : parseFloat(v); return isFinite(n) ? n : null; };
+  function getPath(obj, path) { if (!path) return undefined; return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj); }
+  function toDate(v) {
+    if (v == null) return null;
+    if (typeof v.toDate === 'function') return v.toDate();
+    if (typeof v === 'object' && 'seconds' in v) return new Date(v.seconds * 1000);
+    if (typeof v === 'number') return new Date(v < 1e12 ? v * 1000 : v);
+    const d = new Date(v); return isNaN(d) ? null : d;
+  }
+  function parseDoc(data, fallbackTime) {
+    const f = CONFIG.fields, r = { t: toDate(getPath(data, CONFIG.timeField)) || fallbackTime || new Date() };
+    for (const k in f) r[k] = num(getPath(data, f[k]));
+    return r;
+  }
+
+  function sinceValue(sample) {
+    const since = new Date(Date.now() - CONFIG.historyHours * H);
+    if (sample && typeof sample.toDate === 'function') return firebase.firestore.Timestamp.fromDate(since);
+    if (typeof sample === 'number') return sample < 1e12 ? Math.floor(+since / 1000) : +since;
+    if (typeof sample === 'string') return since.toISOString();
+    return firebase.firestore.Timestamp.fromDate(since);
+  }
+
+  // keep readings in this browser so a reload does not lose the chart (node/doc modes only)
+  function saveHist() { try { const cut = Date.now() - CONFIG.historyHours * H; localStorage.setItem('sa-hist', JSON.stringify(store.rows.filter(r => r.t > cut).slice(-CONFIG.maxDocs).map(r => ({ ...r, t: +r.t })))); } catch (e) { } }
+  function loadHist() { try { const a = JSON.parse(localStorage.getItem('sa-hist') || '[]'); const cut = Date.now() - CONFIG.historyHours * H; store.rows = a.filter(r => r.t > cut).map(r => ({ ...r, t: new Date(r.t) })); } catch (e) { store.rows = []; } }
+  function appendReading(r) {
+    const last = store.rows[store.rows.length - 1];
+    const same = last && Math.abs(last.t - r.t) < 1000 && last.pm25 === r.pm25;
+    if (!same) store.rows.push(r);
+    store.rows = store.rows.filter(x => x.t > Date.now() - CONFIG.historyHours * H);
+    saveHist();
+  }
+
+  function startRTDB() {
+    const fb = CONFIG.firebase;
+    if (!fb.apiKey || !fb.databaseURL) { setStatus('warn', '<b>ยังไม่ได้ตั้งค่า Firebase</b> หน้านี้จึงแสดงข้อมูลจำลอง'); startSimulated(); return; }
+    if (typeof firebase === 'undefined' || !firebase.database) { setStatus('err', '<b>โหลด Firebase SDK ไม่ได้</b> ตรวจสอบอินเทอร์เน็ต หรือเปิดไฟล์ผ่านเว็บเซิร์ฟเวอร์ (ไม่ใช่ใน Claude)'); startSimulated(); return; }
+    try { firebase.initializeApp(fb); } catch (e) { if (!/already exists/.test(e.message)) throw e; }
+    const db = firebase.database();
+    setStatus('info', 'กำลังเชื่อมต่อ Realtime Database …');
+    const onErr = e => { console.error(e); setStatus('err', '<b>อ่าน Realtime Database ไม่ได้:</b> ' + (e.message || e) + '<br>ตรวจสอบ path และ Database Rules ว่าอนุญาตให้อ่าน'); };
+    const timer = setTimeout(() => { if (!store.live) setStatus('warn', 'ยังไม่ได้รับข้อมูลจาก <span class="num">' + CONFIG.rtdbPath + '</span> ตรวจว่า ESP32 เปิดอยู่ และ Database Rules อนุญาตให้อ่าน'); }, 8000);
+    if (CONFIG.rtdbMode === 'list') {
+      db.ref(CONFIG.rtdbPath).orderByKey().limitToLast(CONFIG.maxDocs).on('value', snap => {
+        const v = snap.val(); if (!v) return; clearTimeout(timer);
+        const cut = Date.now() - CONFIG.historyHours * H;
+        store.rows = Object.values(v).map(d => parseDoc(d)).filter(r => r.t > cut).sort((a, b) => a.t - b.t);
+        liveOK('Realtime Database · ' + store.rows.length + ' รายการใน ' + CONFIG.historyHours + ' ชม.');
+      }, onErr);
+      return;
+    }
+    loadHist();
+    if (store.rows.length) renderOverview();
+    db.ref(CONFIG.rtdbPath).on('value', snap => {
+      const v = snap.val(); if (!v) return; clearTimeout(timer);
+      appendReading(parseDoc(v, new Date()));
+      liveOK('Realtime Database <span class="num">' + CONFIG.rtdbPath + '</span> · เก็บประวัติในเบราว์เซอร์นี้ ' + store.rows.length + ' ค่า');
+    }, onErr);
+  }
+
+  function startFirestore() {
+    const fb = CONFIG.firebase;
+    if (!fb.apiKey || !fb.projectId) { setStatus('warn', '<b>ยังไม่ได้ตั้งค่า Firebase</b> หน้านี้จึงแสดงข้อมูลจำลอง กด "ตั้งค่าการเชื่อมต่อ" แล้วใส่ค่า Firebase ของโปรเจกต์'); startSimulated(); return; }
+    if (typeof firebase === 'undefined') { setStatus('err', '<b>โหลด Firebase SDK ไม่ได้</b> ตรวจสอบอินเทอร์เน็ต หรือเปิดไฟล์ผ่านเว็บเซิร์ฟเวอร์ (ไม่ใช่ใน Claude)'); startSimulated(); return; }
+    try { firebase.initializeApp(fb); } catch (e) { if (!/already exists/.test(e.message)) throw e; }
+    const db = firebase.firestore();
+    setStatus('info', 'กำลังเชื่อมต่อ Firestore …');
+    const onErr = e => { console.error(e); setStatus('err', '<b>อ่าน Firestore ไม่ได้:</b> ' + (e.message || e) + '<br>ตรวจสอบชื่อ collection/ฟิลด์ใน "ตั้งค่าการเชื่อมต่อ" และ Firestore Rules ว่าอนุญาตให้อ่าน'); };
+
+    if (CONFIG.mode === 'doc') {
+      loadHist();
+      db.doc(CONFIG.docPath).onSnapshot(snap => {
+        if (!snap.exists) { setStatus('err', 'ไม่พบเอกสาร <span class="num">' + CONFIG.docPath + '</span>'); return; }
+        appendReading(parseDoc(snap.data(), new Date()));
+        liveOK('Firestore · เอกสารเดียว · เก็บประวัติในเบราว์เซอร์นี้ ' + store.rows.length + ' ค่า');
+      }, onErr);
+      return;
+    }
+    const col = db.collection(CONFIG.collection);
+    col.orderBy(CONFIG.timeField, 'desc').limit(1).get().then(first => {
+      if (first.empty) { setStatus('err', 'collection <span class="num">' + CONFIG.collection + '</span> ไม่มีข้อมูล หรือไม่มีฟิลด์ <span class="num">' + CONFIG.timeField + '</span>'); return; }
+      const sample = getPath(first.docs[0].data(), CONFIG.timeField);
+      const q = col.where(CONFIG.timeField, '>=', sinceValue(sample)).orderBy(CONFIG.timeField, 'asc').limitToLast(CONFIG.maxDocs);
+      q.onSnapshot(snap => {
+        store.rows = snap.docs.map(d => parseDoc(d.data())).filter(r => r.t).sort((a, b) => a.t - b.t);
+        liveOK('Firestore · ' + snap.size + ' รายการใน ' + CONFIG.historyHours + ' ชม.');
+      }, onErr);
+    }).catch(onErr);
+  }
+
+  function liveOK(detail) {
+    store.live = true; store.lastUpdate = new Date();
+    setStatus('ok', '<b>เชื่อมต่อข้อมูลจริงจาก ESP32 แล้ว</b> · ' + detail + ' · แท็บ "พยากรณ์" และ "แหล่งกำเนิดมลพิษ" ยังเป็นข้อมูลจำลอง');
+    renderOverview(); if (!$('p-map').hidden) renderRealMap();
+  }
+
+  // ---------- Air4Thai ----------
+  // ค่าสถานีมาจาก Firebase (/air4thai/<id> และ /air4thai_history/<id>) ซึ่งสคริปต์ air4thai_to_firebase.py เขียนไว้
+  // เบราว์เซอร์ดึง Air4Thai ตรงๆ ไม่ได้เพราะ CORS จึงใช้การดึงตรงเป็นทางสำรองเท่านั้น
+  function setStation(d) {
+    const v = d ? num(d.pm25) : null;
+    if (v == null) return false;
+    const t = d.time ? new Date(d.time) : new Date();
+    store.station = { v, t, lat: num(d.lat), lng: num(d.lng), name: d.name || CONFIG.air4thaiStation };
+    const last = store.stationHist[store.stationHist.length - 1];
+    if (!last || last.t !== +t) store.stationHist.push({ t: +t, v });
+    const ageH = (Date.now() - t) / H;
+    $('kStaNote').textContent = (d.name ? d.name + ' · ' : '') + 'ค่าเวลา ' + fmtT(t) + ' น.' + (ageH > 3 ? ' (เก่ากว่า 3 ชม.)' : '');
+    renderOverview();
+    return true;
+  }
+  function startAir4Thai() {
+    const id = CONFIG.air4thaiStation;
+    if (!id) { $('kStaNote').textContent = 'ใส่รหัสสถานีใน "ตั้งค่าการเชื่อมต่อ"'; return; }
+    if (CONFIG.air4thaiViaFirebase && CONFIG.backend !== 'firestore' && typeof firebase !== 'undefined' && firebase.database) {
+      const db = firebase.database();
+      $('kStaNote').textContent = 'กำลังอ่านค่าสถานีจาก Firebase …';
+      db.ref('air4thai_history/' + id).limitToLast(48).once('value').then(snap => {
+        const h = snap.val() || {};
+        const merged = new Map(store.stationHist.map(p => [p.t, p]));
+        Object.values(h).forEach(d => { const t = +new Date(d.time), v = num(d.pm25); if (t && v != null) merged.set(t, { t, v }); });
+        store.stationHist = [...merged.values()].sort((a, b) => a.t - b.t);
+        renderOverview();
+      }).catch(e => console.warn(e));
+      db.ref('air4thai/' + id).on('value', snap => {
+        if (!setStation(snap.val())) $('kStaNote').textContent = 'ยังไม่มีค่าสถานีใน Firebase · รันสคริปต์ air4thai_to_firebase.py';
+      }, e => { console.warn(e); $('kStaNote').textContent = 'อ่าน /air4thai จาก Firebase ไม่ได้'; });
+      return;
+    }
+    fetch('https://air4thai.pcd.go.th/services/getNewAQI_JSON.php?stationID=' + encodeURIComponent(id))
+      .then(r => r.json()).then(j => {
+        const s = j.stations ? j.stations.find(x => x.stationID === id) : j;
+        const a = s && s.AQILast;
+        if (!a || !a.PM25) throw new Error('no PM25');
+        setStation({ pm25: a.PM25.value, time: a.date && a.time ? a.date + 'T' + a.time + ':00+07:00' : null, lat: s.lat, lng: s.long, name: s.nameTH });
+      }).catch(e => { console.warn(e); $('kStaNote').textContent = 'ดึงจาก Air4Thai ตรงไม่ได้ · ใช้สคริปต์ air4thai_to_firebase.py'; });
+  }
+
+  // ---------- overview render ----------
+  let simTimer = null;
+  function renderOverview() {
+    const rows = store.rows;
+    const now = Date.now();
+    const lastRow = rows[rows.length - 1];
+    // 1-hour average PM2.5
+    const hr = rows.filter(r => r.t > now - H && r.pm25 != null);
+    const avg = hr.length ? hr.reduce((s, r) => s + r.pm25, 0) / hr.length : (lastRow ? lastRow.pm25 : null);
+    $('kOurs').textContent = avg != null ? avg.toFixed(1) : '—'; setPill($('kOursPill'), avg);
+    $('kOursNote').textContent = hr.length ? 'ค่าเฉลี่ย 1 ชม. (' + hr.length + ' ค่า)' : 'ค่าล่าสุด';
+    const st = store.station;
+    $('kSta').textContent = st ? st.v.toFixed(1) : '—'; setPill($('kStaPill'), st ? st.v : null);
+    if (st && avg != null) { const ratio = avg / st.v; $('kRatio').textContent = ratio.toFixed(2); $('kDiff').textContent = (ratio >= 1 ? '+' : '') + ((ratio - 1) * 100).toFixed(0); }
+    else { $('kRatio').textContent = '—'; $('kDiff').textContent = '—'; }
+    // device status
+    if (lastRow) {
+      const ageMin = (now - lastRow.t) / 60000;
+      $('kLast').textContent = ageMin < 1 ? 'ไม่ถึง 1 นาทีที่แล้ว' : ageMin < 120 ? Math.round(ageMin) + ' นาทีที่แล้ว' : fmtD(lastRow.t) + ' ' + fmtT(lastRow.t);
+      const online = ageMin < 10;
+      $('kComp').textContent = online ? 'ออนไลน์' : 'ขาดการเชื่อมต่อ';
+      $('kCompUnit').textContent = '';
+      $('liveDot').classList.toggle('off', !online);
+      $('kCount').textContent = rows.length + ' รายการใน ' + CONFIG.historyHours + ' ชม.';
+    }
+    $('liveText').textContent = store.live ? 'ข้อมูลจริง · อัปเดต ' + new Date().toLocaleTimeString('th-TH') : 'ข้อมูลจำลอง';
+    // gases
+    const g = lastRow || {};
+    const show = (id, bar, v, pct, dec) => { $(id).textContent = v == null ? '—' : v.toFixed(dec || 0); if (bar) $(bar).style.width = v == null ? '0%' : Math.max(0, Math.min(100, pct(v))) + '%'; };
+    show('gTvoc', 'bTvoc', g.tvoc, v => v / 6);
+    show('gEco2', 'bEco2', g.eco2, v => (v - 400) / 12);
+    show('gCo', 'bCo', g.co, v => v);
+    show('gUba', 'bUba', g.aqiUba, v => v * 20);
+    show('gT', null, g.temp, null, 1); show('gRh', null, g.rh, null, 0);
+    show('gPm1', null, g.pm1, null, 1); show('gPm10', null, g.pm10, null, 1);
+    // chart window adapts to how much history exists (30 min … historyHours)
+    const firstT = rows.length ? +rows[0].t : now - CONFIG.historyHours * H;
+    const win = Math.min(CONFIG.historyHours * H, Math.max(5 * 60e3, (now - firstT) * 1.05));
+    const x1 = now, x0 = now - win;
+    const bin = Math.min(5 * 60e3, Math.max(5e3, win / 240)), bins = new Map();
+    rows.forEach(r => { if (r.pm25 == null || r.t < x0) return; const k = Math.floor(r.t / bin) * bin; const b = bins.get(k) || { s: 0, n: 0 }; b.s += r.pm25; b.n++; bins.set(k, b); });
+    const pts = [...bins.entries()].sort((a, b) => a[0] - b[0]).map(([t, b]) => ({ t: t + bin / 2, v: b.s / b.n }));
+    // station values are hourly: draw them as a step line clipped to the window
+    const hist = store.stationHist.slice().sort((a, b) => a.t - b.t);
+    const stHist = [];
+    let cur = null;
+    hist.forEach(p => { if (p.t <= x0) cur = p.v; });
+    if (cur != null) stHist.push({ t: x0, v: cur });
+    hist.filter(p => p.t > x0 && p.t <= x1).forEach(p => { if (cur != null) stHist.push({ t: p.t - 1, v: cur }); stHist.push({ t: p.t, v: p.v }); cur = p.v; });
+    if (cur != null) stHist.push({ t: x1, v: cur });
+    const vmax = Math.max(40, ...pts.map(p => p.v), ...stHist.map(p => p.v));
+    const ymax = Math.ceil(vmax / 10) * 10 + 10;
+    const nar = $('cOverview').clientWidth < 520, xticks = [];
+    const maxTicks = nar ? 4 : 7;
+    const steps = [1, 2, 5, 10, 15, 30, 60, 120, 240, 360].map(m => m * 60e3);
+    const stepT = steps.find(st => win / st <= maxTicks) || 6 * H;
+    for (let t = Math.ceil(x0 / stepT) * stepT; t <= x1; t += stepT) xticks.push({ t, l: fmtT(new Date(t)) });
+    const winH = win / H;
+    $('ovTitle').textContent = 'PM2.5 ย้อนหลัง ' + (winH >= 1 ? (Math.round(winH * 10) / 10) + ' ชั่วโมง' : Math.round(win / 60e3) + ' นาที');
+    lineChart($('cOverview'), {
+      label: 'กราฟ PM2.5 ย้อนหลัง เครื่องของโครงงานเทียบสถานี', x0, x1, ymax, ystep: ymax > 100 ? 20 : 10, bands: true, xticks,
+      thresholds: [{ v: 37.5, c: '--ink', l: 'มาตรฐานไทย 37.5' }, { v: 15, c: '--faint', l: 'WHO 15' }],
+      series: [
+        { name: 'สถานี Air4Thai', c: '--s2', pts: stHist, tol: 40 * 60e3 },
+        { name: 'เครื่องของโครงงาน', c: '--s1', pts, endDot: true, gap: Math.max(20 * 60e3, bin * 6), tol: Math.max(bin, 60e3) }]
+    });
+    $('ovEmpty').hidden = pts.length > 0;
+  }
+
+  // ---------- real GPS map (Leaflet) ----------
+  let map = null, layer = null;
+  function renderRealMap() {
+    if (typeof L === 'undefined') { $('realMapNote').textContent = 'โหลดไลบรารีแผนที่ไม่ได้'; return; }
+    const pts = store.rows.filter(r => r.lat != null && r.lng != null && Math.abs(r.lat) > 0.0001);
+    if (!map) {
+      map = L.map('realMap', { scrollWheelZoom: false }).setView([16.4419, 102.8360], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+      layer = L.layerGroup().addTo(map);
+    }
+    setTimeout(() => map.invalidateSize(), 50);
+    layer.clearLayers();
+    if (!pts.length) { $('realMapNote').textContent = store.live ? 'ยังไม่มีข้อมูลพิกัด GPS ใน ' + CONFIG.historyHours + ' ชม.ที่ผ่านมา (ESP32 ยังไม่ได้ส่งฟิลด์ lat/lng มาที่ ' + CONFIG.rtdbPath + ')' : 'แสดงเมื่อเชื่อมต่อข้อมูลจริง'; return; }
+    pts.forEach((p, i) => {
+      const last = i === pts.length - 1;
+      const c = p.pm25 == null ? css('--faint') : css(level(p.pm25).c);
+      L.circleMarker([p.lat, p.lng], { radius: last ? 9 : 5, color: last ? css('--ink') : '#ffffff', weight: last ? 2.5 : 1, fillColor: c, fillOpacity: .9 })
+        .bindTooltip(`${fmtT(p.t)} · PM2.5 ${p.pm25 == null ? '—' : p.pm25.toFixed(1)} µg/m³`).addTo(layer);
+    });
+    if (store.station && store.station.lat) L.marker([store.station.lat, store.station.lng]).bindTooltip('สถานี Air4Thai ' + store.station.name).addTo(layer);
+    const b = L.latLngBounds(pts.map(p => [p.lat, p.lng])); map.fitBounds(b.pad(0.2), { maxZoom: 16 });
+    $('realMapNote').textContent = pts.length + ' จุด · สีตามระดับ PM2.5 ของไทย · จุดขอบดำคือตำแหน่งล่าสุด';
+  }
+
+  // ---------- simulated fallback for overview ----------
+  function pmShape(h) { const hr = ((h % 24) + 24) % 24; return 24 + 9 * Math.exp(-((hr - 8) ** 2) / 6) + 12 * Math.exp(-((hr - 20) ** 2) / 8) - 6 * Math.exp(-((hr - 14) ** 2) / 10); }
+  function startSimulated() {
+    const now = Date.now();
+    store.rows = []; store.stationHist = [];
+    for (let i = 24 * 12; i >= 0; i--) { const t = now - i * 5 * 60e3; const d = new Date(t); const b = pmShape(d.getHours() + d.getMinutes() / 60); store.rows.push({ t: new Date(t), pm1: b * .7, pm10: b * 1.6, pm25: Math.max(5, b * 1.12 + gauss() * 2), tvoc: 210 + gauss() * 20, eco2: 560 + gauss() * 15, co: 18 + gauss() * 2, aqiUba: 2, temp: 29.4, rh: 71, lat: null, lng: null }); }
+    for (let i = 23; i >= 0; i--) { const t = Math.floor((now - i * H) / H) * H; store.stationHist.push({ t, v: Math.max(5, pmShape(new Date(t).getHours()) + gauss() * 1.5) }); }
+    store.station = { v: store.stationHist[store.stationHist.length - 1].v, t: new Date() };
+    $('kStaNote').textContent = 'ข้อมูลจำลอง';
+    renderOverview();
+    simTimer = setInterval(() => { const t = new Date(); const l = store.rows[store.rows.length - 1]; store.rows.push({ ...l, t, pm25: Math.max(5, l.pm25 + gauss() * 1.2) }); renderOverview(); }, 5000);
+  }
+
+  // =====================================================================
+  //  SIMULATED TABS (forecast / source / schematic map) — same as concept demo
+  // =====================================================================
+  let fc = null;
+  function buildForecast() {
+    const nowH = Math.floor(Date.now() / H) * H; const past = [];
+    for (let i = 23; i >= 0; i--) { const t = nowH - i * H; past.push({ t, v: Math.max(5, pmShape(new Date(t).getHours()) + 4 * Math.sin(i / 5) + gauss() * 1.6) }); }
+    const last = past[past.length - 1], fut = [];
+    for (let k = 0; k <= 6; k++) { const t = last.t + k * H; const v = k === 0 ? last.v : last.v + (pmShape(new Date(t).getHours()) - pmShape(new Date(last.t).getHours())) * 1.15 + 3.2 * k; fut.push({ t, v, lo: v - 2 - 1.6 * k, hi: v + 2 + 1.9 * k }); }
+    fc = { past, fut, last };
+  }
+  function drawForecast() {
+    const { past, fut, last } = fc; const pts = past.slice(-12);
+    const ymax = Math.max(60, Math.ceil(Math.max(...fut.map(f => f.hi)) / 10) * 10 + 10);
+    const xticks = [...pts, ...fut.slice(1)].filter((p, i) => i % 3 === 0).map(p => ({ t: p.t, l: fmtT(new Date(p.t)) }));
+    lineChart($('cForecast'), {
+      label: 'กราฟพยากรณ์ PM2.5 ล่วงหน้า 6 ชั่วโมง', x0: pts[0].t, x1: fut[fut.length - 1].t, ymax, ystep: 10, bands: true, xticks,
+      thresholds: [{ v: 37.5, c: '--ink', l: 'มาตรฐานไทย 37.5' }], areas: [{ c: '--s1', pts: fut }],
+      series: [
+        { name: 'Persistence', c: '--faint', dash: '4 4', pts: fut.map(f => ({ t: f.t, v: last.v })) },
+        { name: 'ค่าจริง', c: '--s1', pts, endDot: true },
+        { name: 'พยากรณ์', c: '--s1', dash: '6 5', pts: fut.map(f => ({ t: f.t, v: f.v })) }]
+    });
+    const exceed = fut.find(f => f.v > 37.5), peak = Math.max(...fut.map(f => f.v));
+    $('lineLead').textContent = exceed ? Math.round((exceed.t - last.t) / H) : '—';
+    $('linePeak').textContent = peak.toFixed(1); $('lineTime').textContent = fmtT(new Date(last.t));
+    const acc = [[1, 3.1, 3.9], [3, 5.4, 8.2], [6, 7.6, 11.9]];
+    $('accRows').innerHTML = acc.map(a => `<tr><td>${a[0]} ชั่วโมง</td><td class="n">${a[1].toFixed(1)}</td><td class="n">${a[2].toFixed(1)}</td><td class="n better">${Math.round((1 - a[1] / a[2]) * 100)}%</td></tr>`).join('');
+  }
+  function drawSchematic() {
+    seed = 101;
+    const host = $('cMap'); host.innerHTML = '';
+    const C = 18, R = 11, S = 34, W = C * S + 20, Hh = R * S + 20;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'ผังจำลองเส้นทางตรวจวัดและอัตราส่วนค่าฝุ่นเทียบสถานี' }, host);
+    el('rect', { x: 10, y: 10, width: C * S, height: R * S, rx: 8, fill: css('--surface-2') }, svg);
+    [{ name: 'พื้นที่สีเขียว', x: 0, y: 0 }, { name: 'ถนนสายหลัก', x: 6, y: 0 }, { name: 'ที่พักอาศัย', x: 0, y: 4 }, { name: 'ย่านใจกลางเมือง', x: 7, y: 4 }]
+      .forEach(z => { const tx = el('text', { x: 10 + z.x * S + 8, y: 10 + z.y * S + 18, class: 'zone-lab' }, svg); tx.textContent = z.name; });
+    [[6, 0, 6, 4], [0, 4, C, 4], [7, 4, 7, R]].forEach(([a, b, c, d]) => el('line', { x1: 10 + a * S, y1: 10 + b * S, x2: 10 + c * S, y2: 10 + d * S, stroke: css('--line'), 'stroke-dasharray': '3 4' }, svg));
+    const route = [], push = (x, y) => route.push([x, y]);
+    for (let x = 9; x <= 16; x++) push(x, 6); for (let y = 5; y >= 2; y--) push(16, y); for (let x = 15; x >= 2; x--) push(x, 2);
+    for (let y = 3; y <= 9; y++) push(2, y); for (let x = 3; x <= 12; x++) push(x, 9); for (let y = 8; y >= 7; y--) push(12, y); for (let x = 11; x >= 9; x--) push(x, 7);
+    const zoneOf = (x, y) => y < 4 ? (x < 6 ? 'พื้นที่สีเขียว' : 'ถนนสายหลัก') : (x < 7 ? 'ที่พักอาศัย' : 'ย่านใจกลางเมือง');
+    const baseZ = { 'พื้นที่สีเขียว': .82, 'ถนนสายหลัก': 1.28, 'ที่พักอาศัย': .98, 'ย่านใจกลางเมือง': 1.12 };
+    const names = { '13,2': 'หน้าห้างบนถนนสายหลัก', '10,2': 'แยกไฟแดงถนนสายหลัก', '12,9': 'ใกล้สถานีขนส่ง', '15,6': 'ตลาดเช้า' };
+    const bumps = { '13,2': .3, '10,2': .22, '12,9': .25, '15,6': .2, '14,2': .12 };
+    const cells = route.map(([x, y]) => { const k = x + ',' + y; return { x, y, k, r: Math.max(.6, baseZ[zoneOf(x, y)] + (bumps[k] || 0) + gauss() * .04), zone: zoneOf(x, y), n: 8 + Math.floor(rnd() * 5), name: names[k] }; });
+    const mix = (a, b, f) => { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const A = p(a), B = p(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * f)).join(',') + ')'; };
+    const lo = css('--div-lo'), mid = css('--div-mid'), hi = css('--div-hi');
+    const col = r => r >= 1 ? mix(mid, hi, Math.min(1, (r - 1) / .45)) : mix(mid, lo, Math.min(1, (1 - r) / .3));
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; host.appendChild(tip);
+    cells.forEach(c => {
+      const rect = el('rect', { x: 10 + c.x * S + 1, y: 10 + c.y * S + 1, width: S - 2, height: S - 2, rx: 5, fill: col(c.r), class: 'cell', tabindex: 0 }, svg);
+      const show = () => { const r = svg.getBoundingClientRect(); tip.innerHTML = `<div class="t">${c.zone}${c.name ? ' · ' + c.name : ''}</div><div class="r">เทียบสถานี <b class="num">${c.r.toFixed(2)}×</b></div><div class="r small muted">วัดผ่าน ${c.n}/12 รอบ</div>`; tip.hidden = false; const cx = (10 + c.x * S + S / 2) / W * r.width; tip.style.left = Math.min(Math.max(cx, tip.offsetWidth / 2), r.width - tip.offsetWidth / 2) + 'px'; tip.style.top = ((10 + c.y * S) / Hh * r.height) + 'px'; };
+      rect.addEventListener('pointerenter', show); rect.addEventListener('focus', show); rect.addEventListener('pointerdown', show);
+      rect.addEventListener('pointerleave', () => tip.hidden = true); rect.addEventListener('blur', () => tip.hidden = true);
+    });
+    const sx = 10 + 8 * S + S / 2, sy = 10 + 7 * S;
+    el('circle', { cx: sx, cy: sy, r: 9, fill: css('--surface'), stroke: css('--ink'), 'stroke-width': 2.5 }, svg);
+    el('circle', { cx: sx, cy: sy, r: 3.5, fill: css('--ink') }, svg);
+    const st = el('text', { x: 10 + 7 * S + 4, y: 10 + 5 * S + S / 2 + 4, class: 'zone-lab', style: 'fill:' + css('--ink') }, svg); st.textContent = 'สถานี Air4Thai (จุดเริ่ม-จบ)';
+    const top = cells.filter(c => c.name && c.r > 1.15).sort((a, b) => b.r - a.r).slice(0, 4);
+    $('hotList').innerHTML = top.map(c => `<li><b>${c.name}</b><br><span class="small muted">${c.zone} · สูงกว่าสถานี <span class="num">${Math.round((c.r - 1) * 100)}%</span> · วัดผ่าน ${c.n}/12 รอบ</span></li>`).join('');
+    const zs = {}; cells.forEach(c => { (zs[c.zone] = zs[c.zone] || []).push(c.r); });
+    const med = a => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    $('zoneRows').innerHTML = Object.entries(zs).map(([z, a]) => [z, med(a)]).sort((a, b) => b[1] - a[1]).map(([z, m]) => `<tr><td>${z}</td><td class="n">${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}%</td></tr>`).join('');
+  }
+  function drawScatter() {
+    seed = 202;
+    const host = $('cScatter'); host.innerHTML = '';
+    const W = Math.min(700, Math.max(340, host.clientWidth || 520)), Hh = 320, m = { l: 46, r: 14, t: 12, b: 42 };
+    const svg = el('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'กราฟกระจายลายเซ็นเหตุการณ์ฝุ่นพุ่ง' }, host);
+    const X = v => m.l + v / 100 * (W - m.l - m.r), Y = v => Hh - m.b - v / 100 * (Hh - m.t - m.b);
+    for (let v = 0; v <= 100; v += 25) { el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css('--line') }, svg); const a = el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end' }, svg); a.textContent = v; const b = el('text', { x: X(v), y: Hh - m.b + 16, 'text-anchor': 'middle' }, svg); b.textContent = v; }
+    const xl = el('text', { x: (m.l + W - m.r) / 2, y: Hh - 6, 'text-anchor': 'middle' }, svg); xl.textContent = 'ดัชนีการเพิ่มขึ้นของ CO (MQ-7)';
+    const yl = el('text', { x: 12, y: (m.t + Hh - m.b) / 2, 'text-anchor': 'middle', transform: `rotate(-90 12 ${(m.t + Hh - m.b) / 2})` }, svg); yl.textContent = 'ดัชนีการเพิ่มขึ้นของ TVOC';
+    const pts = [];
+    for (let i = 0; i < 26; i++) pts.push({ g: 'A', x: 28 + gauss() * 9, y: 70 + gauss() * 10, pm: 30 + rnd() * 30 });
+    for (let i = 0; i < 30; i++) pts.push({ g: 'B', x: 68 + gauss() * 10, y: 30 + gauss() * 9, pm: 12 + rnd() * 18 });
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; host.appendChild(tip);
+    pts.forEach(p => {
+      p.x = Math.min(97, Math.max(3, p.x)); p.y = Math.min(97, Math.max(3, p.y));
+      el('circle', { cx: X(p.x), cy: Y(p.y), r: 5.5, fill: css(p.g === 'A' ? '--s2' : '--s1'), stroke: css('--surface'), 'stroke-width': 2, opacity: .9 }, svg);
+      const hitc = el('circle', { cx: X(p.x), cy: Y(p.y), r: 11, fill: 'transparent' }, svg);
+      const show = () => { const r = svg.getBoundingClientRect(); tip.innerHTML = `<div class="t">${p.g === 'A' ? 'กลุ่ม A: คล้ายควันเผา' : 'กลุ่ม B: คล้ายการจราจร'}</div><div class="r">PM2.5 เพิ่มขึ้น <b class="num">+${p.pm.toFixed(0)}</b> µg/m³</div>`; tip.hidden = false; tip.style.left = Math.min(Math.max(X(p.x) / W * r.width, tip.offsetWidth / 2), r.width - tip.offsetWidth / 2) + 'px'; tip.style.top = (Y(p.y) / Hh * r.height) + 'px'; };
+      hitc.addEventListener('pointerenter', show); hitc.addEventListener('pointerdown', show); hitc.addEventListener('pointerleave', () => tip.hidden = true);
+    });
+  }
+  function drawFire() {
+    seed = 303;
+    const days = [], start = new Date(2026, 0, 1);
+    for (let i = 0; i < 31; i++) { const ev = (i > 8 && i < 15) || (i > 21 && i < 27); const fires = Math.max(0, Math.round((ev ? 42 : 9) + gauss() * (ev ? 10 : 5))); days.push({ d: new Date(+start + i * 24 * H), fires, pm: Math.max(10, (ev ? 46 : 27) + fires * .12 + gauss() * 4) }); }
+    const W = Math.min(700, Math.max(340, $('cFireBars').clientWidth || 520)), m = { l: 46, r: 14 };
+    const X = i => m.l + (i + .5) / days.length * (W - m.l - m.r), bw = (W - m.l - m.r) / days.length - 2;
+    let host = $('cFireBars'); host.innerHTML = ''; let Hh = 150, t = 12, b = 18;
+    let svg = el('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'จำนวนจุดความร้อนต้นลมรายวัน' }, host);
+    const Yf = v => Hh - b - v / 80 * (Hh - t - b);
+    [0, 40, 80].forEach(v => { el('line', { x1: m.l, x2: W - m.r, y1: Yf(v), y2: Yf(v), stroke: css('--line') }, svg); const a = el('text', { x: m.l - 6, y: Yf(v) + 4, 'text-anchor': 'end' }, svg); a.textContent = v; });
+    el('text', { x: m.l + 4, y: t + 2, style: 'font-family:var(--f-body)' }, svg).textContent = 'จุดความร้อนต้นลม (จุด/วัน)';
+    days.forEach((d, i) => { const h = Math.max(1, Yf(0) - Yf(Math.min(d.fires, 80))); el('rect', { x: X(i) - bw / 2, y: Yf(0) - h, width: bw, height: h, rx: 2, fill: css(d.pm > 37.5 ? '--s2' : '--faint') }, svg); });
+    host = $('cFirePm'); host.innerHTML = ''; Hh = 160; t = 14; b = 26;
+    svg = el('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'PM2.5 เฉลี่ยรายวัน' }, host);
+    const Yp = v => Hh - b - v / 80 * (Hh - t - b);
+    [0, 40, 80].forEach(v => { el('line', { x1: m.l, x2: W - m.r, y1: Yp(v), y2: Yp(v), stroke: css('--line') }, svg); const a = el('text', { x: m.l - 6, y: Yp(v) + 4, 'text-anchor': 'end' }, svg); a.textContent = v; });
+    days.forEach((d, i) => { if (d.pm > 37.5) el('rect', { x: X(i) - bw / 2 - 1, y: t, width: bw + 2, height: Hh - t - b, fill: css('--s2'), opacity: .12 }, svg); });
+    el('line', { x1: m.l, x2: W - m.r, y1: Yp(37.5), y2: Yp(37.5), stroke: css('--ink'), 'stroke-dasharray': '5 4', 'stroke-width': 1.5 }, svg);
+    el('text', { x: m.l + 4, y: t + 2, style: 'font-family:var(--f-body)' }, svg).textContent = 'PM2.5 เฉลี่ยรายวัน (µg/m³) · เส้นประ = 37.5';
+    el('path', { d: days.map((d, i) => (i ? 'L' : 'M') + X(i) + ' ' + Yp(d.pm)).join(' '), fill: 'none', stroke: css('--s1'), 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+    [0, 10, 20, 30].forEach(i => { el('text', { x: X(i), y: Hh - 8, 'text-anchor': i === 30 ? 'end' : i === 0 ? 'start' : 'middle' }, svg).textContent = fmtD(days[i].d); });
+  }
+
+  // ---------- progress ----------
+  const STEPS = [
+    ['done', 'อุปกรณ์ตรวจวัด ESP32 + PMS5003, เซนเซอร์ก๊าซ, BME280', 'ก.ย. 69'],
+    ['done', 'เว็บแสดงผลเรียลไทม์จาก Firebase ตำแหน่ง GPS และกราฟ', 'ต.ค. 69'],
+    ['done', 'ปรับขอบเขตโครงงานและแก้เล่มเค้าโครง', 'ต.ค. 69'],
+    ['doing', 'แสดงค่าเทียบสถานี เส้นเกณฑ์มาตรฐาน ระดับสี AQI และแผนที่ GPS ตามค่าฝุ่น', 'ต.ค. 69'],
+    ['doing', 'ดึงข้อมูล Air4Thai ขอนแก่นและมหาสารคามย้อนหลัง', 'ต.ค.–พ.ย. 69'],
+    ['doing', 'แบบจำลองพยากรณ์ PM2.5 ตัวแรก เทียบ persistence', 'ต.ค.–ธ.ค. 69'],
+    ['plan', 'เปลี่ยนเป็น ENS160 เพิ่ม SD card กล่องกันน้ำ ทดสอบในสภาวะควบคุม', 'พ.ย. 69'],
+    ['plan', 'เก็บข้อมูลจุดคงที่และตรวจวัดแบบเคลื่อนที่ 12 รอบ', 'ธ.ค. 69–ก.พ. 70'],
+    ['plan', 'ระบบแจ้งเตือน LINE และหน้าพยากรณ์บนเว็บ', 'ธ.ค. 69–ม.ค. 70'],
+    ['plan', 'แผนที่จุดเสี่ยง ลายเซ็นแหล่งกำเนิด และความสัมพันธ์กับจุดความร้อน', 'ม.ค.–ก.พ. 70'],
+    ['plan', 'Policy brief และรายงานฉบับสมบูรณ์', 'ก.พ.–มี.ค. 70']];
+  const LAB = { done: 'เสร็จแล้ว', doing: 'กำลังทำ', plan: 'ตามแผน' };
+  $('steps').innerHTML = STEPS.map(s => `<div class="step"><span class="st ${s[0]}">${s[0] === 'done' ? '✓ ' : s[0] === 'doing' ? '◐ ' : '○ '}${LAB[s[0]]}</span><span>${s[1]}</span><span class="when">${s[2]}</span></div>`).join('');
+
+  // ---------- tabs ----------
+  const tabs = [...document.querySelectorAll('.tab')];
+  const drawers = { 'p-overview': renderOverview, 'p-forecast': drawForecast, 'p-map': () => { renderRealMap(); drawSchematic(); }, 'p-source': () => { drawScatter(); drawFire(); } };
+  function select(tab) {
+    tabs.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', on); $(t.getAttribute('aria-controls')).hidden = !on; });
+    const id = tab.getAttribute('aria-controls'); if (drawers[id]) drawers[id]();
+    try { localStorage.setItem('sa-tab', tab.id); } catch (e) { }
+  }
+  tabs.forEach(t => t.addEventListener('click', () => select(t)));
+  document.querySelector('.tabs').addEventListener('keydown', e => { const i = tabs.indexOf(document.activeElement); if (i < 0) return; if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; n.focus(); select(n); } });
+  const redraw = () => { const t = tabs.find(x => x.getAttribute('aria-selected') === 'true'); if (t) select(t); };
+  let rT; window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(redraw, 200); });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+
+  // ---------- init ----------
+  buildForecast();
+  let start = tabs[0];
+  try { const s = localStorage.getItem('sa-tab'); if (s && $(s)) start = $(s); } catch (e) { }
+  select(start);
+  if (CONFIG.backend === 'firestore') startFirestore(); else startRTDB();
+  startAir4Thai();
+  setInterval(() => { if (store.live && !$('p-overview').hidden) renderOverview(); }, 30e3);
+})();
+
+</script>
+</body>
+</html>
