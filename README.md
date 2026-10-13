@@ -48,7 +48,7 @@ cd Smart-Air-Quality-Monitoring-System-Using-IoT
    `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
 2. Boards Manager → ติดตั้ง **esp32 by Espressif Systems**
 3. คัดลอก `firmware/esp32-air-monitor/config.example.h` เป็น `config.h` แล้วใส่ Wi-Fi (2.4 GHz)
-4. ตั้ง `USE_ENS160` / `USE_BME280` / `USE_MQ7` ตามเซนเซอร์ที่มี (ค่าเริ่มต้น 0 = มีแค่ PMS5003 ไม่ต้องลงไลบรารี)
+4. ตั้ง `USE_ENS160` / `USE_BME280` / `USE_MQ7` / `USE_MQ135` ตามเซนเซอร์ที่มี (ค่าเริ่มต้น 0 = มีแค่ PMS5003 ไม่ต้องลงไลบรารี)
    เมื่อได้ ENS160 / BME280 มา ให้ลงไลบรารี **SparkFun Indoor Air Quality Sensor - ENS160** / **Adafruit BME280 Library** แล้วเปลี่ยนเป็น 1
 5. เปิด `esp32-air-monitor.ino` → Board **ESP32 Dev Module** → เลือก Port → Upload
 6. Serial Monitor 115200 ต้องเห็น `Firebase OK` ทุก 10 วินาที
