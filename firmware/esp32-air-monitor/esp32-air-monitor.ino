@@ -2,14 +2,14 @@
   Smart Air Quality Monitor — ESP32 firmware
   ระบบตรวจวัดคุณภาพอากาศอัจฉริยะด้วย IoT
 
-  อ่านค่า   PMS5003 ×2 (PM1.0/2.5/10), ENS160 (TVOC, eCO2, AQI-UBA), MQ-7 (ดัชนี CO), BME280 (T, RH, P)
+  อ่านค่า   PMS5003 ×2 (PM1.0/2.5/10), ENS160 (TVOC, eCO2, AQI-UBA), MQ-7 (ดัชนี CO), MQ135 (ดัชนีก๊าซรวม), BME280 (T, RH, P)
   ส่งไป     Firebase Realtime Database
               /sensor        ค่าล่าสุด (เขียนทับ)  ← หน้าเว็บ docs/index.html อ่านจากที่นี่
               /history       ประวัติ 1 รายการต่อรอบ พร้อม timestamp ของเซิร์ฟเวอร์
   สำรอง     SD card ไฟล์ /YYYYMMDD.csv ทุกรอบ (คอลัมน์ uploaded = 0 ถ้าส่งขึ้น Firebase ไม่สำเร็จ)
 
   ใช้ได้ทั้งตอนที่ Database Rules ยังเปิด (เว้น DEVICE_EMAIL ว่าง) และหลังล็อกการเขียนแล้ว (ใส่บัญชีอุปกรณ์)
-  เลือกเซนเซอร์ที่ติดตั้งได้ใน config.h (USE_ENS160, USE_BME280, USE_MQ7) ตัวที่ปิดไว้ไม่ต้องลงไลบรารี
+  เลือกเซนเซอร์ที่ติดตั้งได้ใน config.h (USE_ENS160, USE_BME280, USE_MQ7, USE_MQ135) ตัวที่ปิดไว้ไม่ต้องลงไลบรารี
   PMS5003 ตัวที่ 2 และ SD card ตรวจหาเองตอนเปิดเครื่อง ถ้าไม่มีก็ข้ามไป
 
   วิธีตั้งค่าและอัปโหลดดูที่ README.md ในโฟลเดอร์นี้
@@ -38,6 +38,9 @@
 #ifndef USE_MQ7
 #define USE_MQ7 0
 #endif
+#ifndef USE_MQ135
+#define USE_MQ135 0
+#endif
 
 #if USE_ENS160
 #include <SparkFun_ENS160.h>   // Library Manager: "SparkFun Indoor Air Quality Sensor - ENS160"
@@ -57,9 +60,17 @@
 #define PMS_B_TX   26
 #define I2C_SDA    21   // ENS160 + BME280 ใช้บัส I2C ร่วมกัน
 #define I2C_SCL    22
-#define MQ7_PIN    34   // ต้องเป็นขา ADC1 (32–39) เพราะ ADC2 ใช้ไม่ได้ตอนเปิด Wi-Fi
+#define MQ7_PIN 33   // ต้องเป็นขา ADC1 (32–39) เพราะ ADC2 ใช้ไม่ได้ตอนเปิด Wi-Fi
+#define MQ135_PIN 32   // ADC1 เช่นกัน
 #define SD_CS       5   // SPI: SCK 18, MISO 19, MOSI 23
 // =========================================================
+
+// ค่าที่ส่งในแต่ละรอบ (ต้องประกาศก่อนฟังก์ชันแรก เพราะ Arduino IDE สร้าง prototype ไว้เหนือฟังก์ชันแรก)
+struct Reading {
+  float pm1, pm25, pm10, pm25a, pm25b, pm1cf, pm25cf, pm10cf;
+  float tvoc, eco2, aqi, co, mq135, temp, rh, pres;
+  int ensStatus;
+};
 
 // ---------- PMS5003: อ่านเฟรม 32 ไบต์แบบไม่บล็อก แล้วเฉลี่ยทุกเฟรมในรอบส่ง ----------
 struct PmsSensor {
@@ -104,9 +115,9 @@ bool ensOk = false, bmeOk = false, sdOk = false;
 float ensTvoc = NAN, ensEco2 = NAN, ensAqi = NAN;
 int ensStatus = -1;          // 0 = ปกติ, 1 = อุ่นเครื่อง (~3 นาที), 2 = เริ่มใช้ครั้งแรก (~1 ชม.), 3 = ไม่มีค่า
 
-// MQ-7 เฉลี่ยค่า ADC ทุก 100 ms
-double mqSum = 0;
-uint32_t mqN = 0, lastMq = 0, lastEns = 0;
+// MQ-7 / MQ135 เฉลี่ยค่า ADC ทุก 100 ms
+double mqSum = 0, mq135Sum = 0;
+uint32_t mqN = 0, mq135N = 0, lastMq = 0, lastEns = 0;
 
 // Firebase
 String dbBase;               // DATABASE_URL ไม่มี / ท้าย
@@ -114,11 +125,6 @@ String idToken;
 uint32_t tokenAt = 0;
 bool useAuth() { return strlen(DEVICE_EMAIL) > 0; }
 
-struct Reading {
-  float pm1, pm25, pm10, pm25a, pm25b, pm1cf, pm25cf, pm10cf;
-  float tvoc, eco2, aqi, co, temp, rh, pres;
-  int ensStatus;
-};
 
 // ---------------- helpers ----------------
 float avg2(float a, float b) {
@@ -163,6 +169,39 @@ void addNum(String &j, const char *key, float v, int decimals) {
 }
 
 // ---------------- Wi-Fi ----------------
+const char *wifiReason(int st) {
+  switch (st) {
+    case WL_NO_SSID_AVAIL:   return "network name not found (wrong SSID, 5 GHz only, or out of range)";
+    case WL_CONNECT_FAILED:  return "connect failed (wrong password?)";
+    case WL_CONNECTION_LOST: return "connection lost";
+    case WL_DISCONNECTED:    return "disconnected (often wrong password, or AP rejected)";
+    case WL_IDLE_STATUS:     return "idle / still trying";
+    default:                 return "unknown";
+  }
+}
+
+// แสดงชื่อ Wi-Fi ที่ ESP32 มองเห็น (เฉพาะ 2.4 GHz) เพื่อเทียบกับ WIFI_SSID ใน config.h
+void scanWiFi() {
+  WiFi.disconnect();
+  int n = WiFi.scanNetworks();
+  Serial.printf("[wifi] %d networks visible (ESP32 sees 2.4 GHz only):\n", n);
+  bool found = false;
+  for (int i = 0; i < n && i < 15; i++) {
+    bool mine = WiFi.SSID(i) == String(WIFI_SSID);
+    found |= mine;
+    Serial.printf("   \"%s\"  %d dBm%s\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i), mine ? "   <-- matches config.h" : "");
+  }
+  if (!found) Serial.printf("   \"%s\" from config.h is NOT in the list: check spelling/case, or switch the hotspot to 2.4 GHz\n", WIFI_SSID);
+  WiFi.scanDelete();
+}
+
+bool timeStarted = false, wifiWasUp = false;
+void onWiFiUp() {
+  wifiWasUp = true;
+  Serial.printf("[wifi] connected  IP %s  RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  if (!timeStarted) { configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com"); timeStarted = true; }  // เวลาไทยสำหรับ SD
+}
+
 void connectWiFi(uint32_t waitMs) {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
@@ -170,20 +209,24 @@ void connectWiFi(uint32_t waitMs) {
   Serial.printf("[wifi] connecting to \"%s\"", WIFI_SSID);
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < waitMs) { delay(500); Serial.print('.'); }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf(" OK  IP %s  RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");   // เวลาไทยสำหรับไฟล์ใน SD
-  } else {
-    Serial.println(" FAILED (2.4 GHz only — check SSID/password). Logging to SD only for now.");
-  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) { onWiFiUp(); return; }
+  Serial.printf("[wifi] FAILED: %s\n", wifiReason(WiFi.status()));
+  scanWiFi();
+  Serial.println("[wifi] will keep retrying every 30 s; readings are still logged to SD");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
 void keepWiFi() {
   static uint32_t lastTry = 0;
-  if (WiFi.status() == WL_CONNECTED || millis() - lastTry < 30000) return;
+  bool up = WiFi.status() == WL_CONNECTED;
+  if (up && !wifiWasUp) onWiFiUp();
+  if (!up) wifiWasUp = false;
+  if (up || millis() - lastTry < 30000) return;
   lastTry = millis();
-  Serial.println("[wifi] reconnecting...");
-  WiFi.reconnect();
+  Serial.printf("[wifi] not connected (%s), retrying...\n", wifiReason(WiFi.status()));
+  WiFi.disconnect();                          // เริ่มใหม่ทั้งรอบ แทน reconnect() ที่ชนกับรอบที่ยังค้างอยู่
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
 // ---------------- Firebase (REST API) ----------------
@@ -244,7 +287,7 @@ bool sendFirebase(const Reading &r) {
   addNum(j, "pm1_0_cf1", r.pm1cf, 1); addNum(j, "pm2_5_cf1", r.pm25cf, 1); addNum(j, "pm10_cf1", r.pm10cf, 1);
   addNum(j, "tvoc", r.tvoc, 0);       addNum(j, "eco2", r.eco2, 0);      addNum(j, "aqi", r.aqi, 0);
   addNum(j, "ens_status", r.ensStatus < 0 ? NAN : (float)r.ensStatus, 0);
-  addNum(j, "co", r.co, 0);
+  addNum(j, "co", r.co, 0);           addNum(j, "mq135", r.mq135, 0);
   addNum(j, "temperature", r.temp, 1); addNum(j, "humidity", r.rh, 1);  addNum(j, "pressure", r.pres, 1);
   j += ",\"timestamp\":{\".sv\":\"timestamp\"}}";   // เวลาฝั่งเซิร์ฟเวอร์ (ms)
 
@@ -270,10 +313,10 @@ void logSd(const Reading &r, bool uploaded) {
   File f = SD.open(fname, FILE_APPEND);
   if (!f) { Serial.println("[sd] write failed — card removed?"); sdOk = false; return; }
   if (isNew) f.println("time,device,pm1_0,pm2_5,pm10,pm2_5_a,pm2_5_b,pm1_0_cf1,pm2_5_cf1,pm10_cf1,"
-                       "tvoc,eco2,aqi,ens_status,co,temperature,humidity,pressure,uploaded");
-  f.printf("%s,%s,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.0f,%.0f,%.0f,%d,%.0f,%.2f,%.2f,%.1f,%d\n",
+                       "tvoc,eco2,aqi,ens_status,co,mq135,temperature,humidity,pressure,uploaded");
+  f.printf("%s,%s,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.0f,%.0f,%.0f,%d,%.0f,%.0f,%.2f,%.2f,%.1f,%d\n",
            ts, DEVICE_ID, r.pm1, r.pm25, r.pm10, r.pm25a, r.pm25b, r.pm1cf, r.pm25cf, r.pm10cf,
-           r.tvoc, r.eco2, r.aqi, r.ensStatus, r.co, r.temp, r.rh, r.pres, uploaded ? 1 : 0);
+           r.tvoc, r.eco2, r.aqi, r.ensStatus, r.co, r.mq135, r.temp, r.rh, r.pres, uploaded ? 1 : 0);
   f.close();
 }
 
@@ -312,6 +355,12 @@ void setupSensors() {
 #if !USE_MQ7
   Serial.println("[mq7] disabled (USE_MQ7 0 in config.h)");
 #endif
+#if !USE_MQ135
+  Serial.println("[mq135] disabled (USE_MQ135 0 in config.h)");
+#endif
+#if USE_MQ7 || USE_MQ135
+  Serial.println("[mq] heater needs ~3 min to stabilise after power-on (24-48 h burn-in on first use)");
+#endif
 
   Serial2.setRxBufferSize(1024);
   Serial2.begin(9600, SERIAL_8N1, PMS_A_RX, PMS_A_TX);
@@ -328,13 +377,17 @@ void setupSensors() {
 void pollSensors() {
   pmsA.poll();
   pmsB.poll();
-#if USE_MQ7
   if (millis() - lastMq >= 100) {
     lastMq = millis();
+#if USE_MQ7
     mqSum += analogRead(MQ7_PIN);
     mqN++;
-  }
 #endif
+#if USE_MQ135
+    mq135Sum += analogRead(MQ135_PIN);
+    mq135N++;
+#endif
+  }
 #if USE_ENS160
   if (ensOk && millis() - lastEns >= 250) {            // ไม่ต้องถาม ENS160 ถี่กว่านี้
     lastEns = millis();
@@ -364,7 +417,8 @@ Reading collect() {
 
   r.tvoc = ensTvoc; r.eco2 = ensEco2; r.aqi = ensAqi; r.ensStatus = ensStatus;
   r.co = mqN ? (float)(mqSum / mqN) : NAN;
-  mqSum = 0; mqN = 0;
+  r.mq135 = mq135N ? (float)(mq135Sum / mq135N) : NAN;
+  mqSum = 0; mqN = 0; mq135Sum = 0; mq135N = 0;
 
   r.temp = r.rh = r.pres = NAN;
 #if USE_BME280
@@ -392,7 +446,10 @@ void printReading(const Reading &r, bool uploaded) {
   Serial.printf(" | TVOC %.0f eCO2 %.0f ens=%d", r.tvoc, r.eco2, r.ensStatus);
 #endif
 #if USE_MQ7
-  Serial.printf(" | CO %.0f", r.co);
+  Serial.printf(" | MQ7 %.0f", r.co);
+#endif
+#if USE_MQ135
+  Serial.printf(" | MQ135 %.0f", r.mq135);
 #endif
 #if USE_BME280
   Serial.printf(" | %.1fC %.0f%%", r.temp, r.rh);

@@ -26,6 +26,13 @@ import time
 from datetime import datetime, timezone, timedelta
 
 import requests
+import urllib3
+
+try:  # ใช้ที่เก็บใบรับรองของระบบปฏิบัติการ (Windows/macOS เติม intermediate certificate ที่ขาดให้ได้)
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
 
 DB_URL = "https://air-quality-project-7904c-default-rtdb.asia-southeast1.firebasedatabase.app"
 API_KEY = "AIzaSyBWNlV5O1PcqfnjyJk3RiMryhtGAVYal_I"   # Web API key (ไม่ใช่ความลับ ความปลอดภัยมาจาก Database Rules)
@@ -37,19 +44,34 @@ TH = timezone(timedelta(hours=7))
 PARAMS = {"PM25": "pm25", "PM10": "pm10", "O3": "o3", "CO": "co", "NO2": "no2", "SO2": "so2"}
 
 
+def _get_json(url, verify=True):
+    r = requests.get(url, timeout=30, verify=verify,
+                     headers={"User-Agent": "Mozilla/5.0 (student air-quality project)"})
+    r.raise_for_status()
+    return r.json()
+
+
 def fetch_air4thai(source_file=None):
     if source_file:
         with open(source_file, encoding="utf-8") as f:
             return json.load(f)
-    last_err = None
+    errors = []
     for url in AIR4THAI_URLS:
         try:
-            r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0 (student air-quality project)"})
-            r.raise_for_status()
-            return r.json()
+            return _get_json(url)
+        except requests.exceptions.SSLError as e:
+            # เซิร์ฟเวอร์ Air4Thai ส่ง intermediate certificate มาไม่ครบ เบราว์เซอร์เติมให้เองได้ แต่ Python ไม่ได้
+            # ข้อมูลนี้เป็นข้อมูลสาธารณะแบบอ่านอย่างเดียว จึงดึงซ้ำแบบไม่ตรวจใบรับรอง (เฉพาะ Air4Thai, การเขียน Firebase ยังตรวจตามปกติ)
+            errors.append(f"{url}: {e}")
+            print("คำเตือน: ตรวจใบรับรอง SSL ของ Air4Thai ไม่ผ่าน จึงดึงข้อมูลแบบไม่ตรวจใบรับรองแทน", file=sys.stderr)
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            try:
+                return _get_json(url, verify=False)
+            except Exception as e2:
+                errors.append(f"{url} (verify=False): {e2}")
         except Exception as e:  # ลอง URL ถัดไป
-            last_err = e
-    raise RuntimeError(f"ดึงข้อมูล Air4Thai ไม่ได้: {last_err}")
+            errors.append(f"{url}: {e}")
+    raise RuntimeError("ดึงข้อมูล Air4Thai ไม่ได้:\n  " + "\n  ".join(errors))
 
 
 def num(v):
