@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -r scripts/requirements.txt
       # ใส่ได้หลายสถานี เช่น --station 46t XXt (ขอนแก่น + มหาสารคาม)
-      - run: python scripts/air4thai_to_firebase.py --station STATION_ID --once
+      - run: python scripts/air4thai_to_firebase.py --station 46t --once
         env:
           FIREBASE_EMAIL: ${{ secrets.FIREBASE_EMAIL }}
           FIREBASE_PASSWORD: ${{ secrets.FIREBASE_PASSWORD }}
