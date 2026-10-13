@@ -1,0 +1,11 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "sensor":           { ".read": true, ".write": true },
+    "history":          { ".read": true, ".write": true },
+    "air4thai":         { ".read": true, ".write": true },
+    "air4thai_history": { ".read": true, ".write": true }
+  }
+}
