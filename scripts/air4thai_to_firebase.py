@@ -5,7 +5,11 @@
 
 เขียนลง:
   /air4thai/<stationID>          ค่าล่าสุดของสถานี (เขียนทับ)
-  /air4thai_history/<stationID>  ประวัติรายชั่วโมง (เพิ่มเมื่อมีชั่วโมงใหม่)
+  /air4thai_history/<stationID>  ประวัติรายชั่วโมง (เติมย้อนหลัง 48 ชม. จาก API ประวัติของ Air4Thai ทุกรอบ
+                                 ชั่วโมงที่ GitHub Actions ไม่ได้รันจึงไม่หาย)
+
+PM2.5 ใน AQILast ของ getNewAQI_JSON เป็นค่าเฉลี่ย 24 ชม. (ใช้คิด AQI) จึงเปลี่ยนช้า
+ค่า pm25 ที่เขียนลง Firebase ใช้ค่ารายชั่วโมงจาก API ประวัติแทน ส่วนค่าเฉลี่ย 24 ชม. เก็บไว้ใน pm25_24h
 
 ติดตั้ง:   pip install -r scripts/requirements.txt
 ดูรหัสสถานี: python scripts/air4thai_to_firebase.py --list ขอนแก่น
@@ -40,12 +44,17 @@ AIR4THAI_URLS = [
     "https://air4thai.pcd.go.th/services/getNewAQI_JSON.php",
     "http://air4thai.pcd.go.th/services/getNewAQI_JSON.php",
 ]
+AIR4THAI_HISTORY_URLS = [   # API ประวัติรายชั่วโมงที่หน้า "ข้อมูลย้อนหลัง" ของเว็บ Air4Thai ใช้
+    "https://air4thai.pcd.go.th/webV2/history/api/data.php",
+    "http://air4thai.pcd.go.th/webV2/history/api/data.php",
+]
+BACKFILL_HOURS = 48
 TH = timezone(timedelta(hours=7))
 PARAMS = {"PM25": "pm25", "PM10": "pm10", "O3": "o3", "CO": "co", "NO2": "no2", "SO2": "so2"}
 
 
-def _get_json(url, verify=True):
-    r = requests.get(url, timeout=30, verify=verify,
+def _get_json(url, verify=True, params=None):
+    r = requests.get(url, params=params, timeout=30, verify=verify,
                      headers={"User-Agent": "Mozilla/5.0 (student air-quality project)"})
     r.raise_for_status()
     return r.json()
@@ -55,10 +64,36 @@ def fetch_air4thai(source_file=None):
     if source_file:
         with open(source_file, encoding="utf-8") as f:
             return json.load(f)
+    return _fetch_any(AIR4THAI_URLS)
+
+
+def fetch_hourly(sid, hours=BACKFILL_HOURS):
+    """ค่า PM2.5 รายชั่วโมงย้อนหลัง {เวลา: ค่า} ของสถานี จาก API ประวัติของ Air4Thai"""
+    now = datetime.now(TH)
+    since = now - timedelta(hours=hours)
+    data = _fetch_any(AIR4THAI_HISTORY_URLS, {
+        "stationID": sid, "param": "PM25", "type": "hr",
+        "sdate": f"{since:%Y-%m-%d}", "edate": f"{now:%Y-%m-%d}", "stime": "00", "etime": "24"})
+    out = {}
+    for s in stations_of(data):
+        if s.get("stationID") != sid:
+            continue
+        for r in s.get("data") or []:
+            try:
+                t = datetime.strptime(r["DATETIMEDATA"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=TH)
+            except (KeyError, TypeError, ValueError):
+                continue
+            v = num(r.get("PM25"))   # ชั่วโมงที่ไม่มีค่า Air4Thai ใส่ "-"
+            if v is not None and t >= since:
+                out[t] = v
+    return out
+
+
+def _fetch_any(urls, params=None):
     errors = []
-    for url in AIR4THAI_URLS:
+    for url in urls:
         try:
-            return _get_json(url)
+            return _get_json(url, params=params)
         except requests.exceptions.SSLError as e:
             # เซิร์ฟเวอร์ Air4Thai ส่ง intermediate certificate มาไม่ครบ เบราว์เซอร์เติมให้เองได้ แต่ Python ไม่ได้
             # ข้อมูลนี้เป็นข้อมูลสาธารณะแบบอ่านอย่างเดียว จึงดึงซ้ำแบบไม่ตรวจใบรับรอง (เฉพาะ Air4Thai, การเขียน Firebase ยังตรวจตามปกติ)
@@ -66,7 +101,7 @@ def fetch_air4thai(source_file=None):
             print("คำเตือน: ตรวจใบรับรอง SSL ของ Air4Thai ไม่ผ่าน จึงดึงข้อมูลแบบไม่ตรวจใบรับรองแทน", file=sys.stderr)
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             try:
-                return _get_json(url, verify=False)
+                return _get_json(url, verify=False, params=params)
             except Exception as e2:
                 errors.append(f"{url} (verify=False): {e2}")
         except Exception as e:  # ลอง URL ถัดไป
@@ -106,6 +141,10 @@ def parse_station(s):
         p = last.get(key)
         out[name] = num(p.get("value")) if isinstance(p, dict) else None
     return out
+
+
+def hour_key(iso):
+    return iso[:13].replace("-", "").replace("T", "_")   # เช่น 20261012_14 = 1 ชั่วโมงต่อ 1 รายการ
 
 
 def stations_of(data):
@@ -153,14 +192,34 @@ def run_once(args):
             print(f"[{datetime.now(TH):%H:%M}] ไม่พบสถานี {sid} (ใช้ --list ขอนแก่น เพื่อดูรหัส)", file=sys.stderr)
             continue
         p = parse_station(s)
-        print(f"[{datetime.now(TH):%H:%M}] {sid} {p['name']}: PM2.5={p['pm25']} เวลา {p['time']}")
+        p["pm25_24h"] = p["pm25"]   # ค่าใน AQILast เป็นค่าเฉลี่ย 24 ชม.
+        hourly = {}
+        if not args.source_file:
+            try:
+                hourly = fetch_hourly(sid)
+            except Exception as e:   # ดึงรายชั่วโมงไม่ได้ ยังเขียนค่าจาก AQILast แบบเดิม
+                print(f"คำเตือน: ดึงค่ารายชั่วโมงของ {sid} ไม่ได้ จึงใช้ค่าเฉลี่ย 24 ชม. แทน: {e}", file=sys.stderr)
+        if hourly:
+            t_last = max(hourly)
+            p["pm25"], p["time"] = hourly[t_last], t_last.isoformat()
+        print(f"[{datetime.now(TH):%H:%M}] {sid} {p['name']}: PM2.5={p['pm25']} เวลา {p['time']}"
+              f" (ค่าเฉลี่ย 24 ชม. {p['pm25_24h']}, ค่ารายชั่วโมง {len(hourly)} ชม.)")
         if args.dry_run:
             print(json.dumps(p, ensure_ascii=False, indent=2))
+            for t in sorted(hourly):
+                print(f"   {t:%d/%m %H:%M}  PM2.5 {hourly[t]}")
             continue
         prev = fb("GET", f"air4thai/{sid}", auth=args.auth) or {}
         fb("PUT", f"air4thai/{sid}", p, auth=args.auth)
-        if p["time"] and prev.get("time") != p["time"]:
-            key = p["time"][:13].replace("-", "").replace("T", "_")   # เช่น 20261012_14 = 1 ชั่วโมงต่อ 1 รายการ
+        if hourly:
+            # เขียนทับ 48 ชม. ล่าสุดทุกรอบ ชั่วโมงที่ไม่ได้รันจะถูกเติม และค่าเฉลี่ย 24 ชม. เดิมถูกแทนด้วยค่ารายชั่วโมง
+            rows = {hour_key(t.isoformat()): {"stationID": sid, "name": p["name"], "time": t.isoformat(),
+                                              "pm25": v, "fetchedAt": p["fetchedAt"]} for t, v in hourly.items()}
+            rows[hour_key(p["time"])] = p
+            fb("PATCH", f"air4thai_history/{sid}", rows, auth=args.auth)
+            print(f"   + ประวัติรายชั่วโมง {len(rows)} ชม. ({min(rows)} ถึง {max(rows)})")
+        elif p["time"] and prev.get("time") != p["time"]:
+            key = hour_key(p["time"])
             fb("PUT", f"air4thai_history/{sid}/{key}", p, auth=args.auth)
             print("   + เพิ่มประวัติชั่วโมงใหม่", key)
 

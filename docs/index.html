@@ -426,8 +426,8 @@ const DEFAULT_CONFIG = {
     { max: 1e9, name: 'มีผลกระทบ', c: '--aqi5' }];
   const level = v => LEVELS.find(l => v <= l.max);
   function setPill(node, v) {
-    if (v == null || isNaN(v)) { node.textContent = 'ไม่มีข้อมูล'; node.style.background = 'var(--surface-2)'; return; }
-    const l = level(v); node.innerHTML = '<i class="sw" style="background:#13201b33"></i>' + l.name; node.style.background = 'var(' + l.c + ')';
+    if (v == null || isNaN(v)) { node.textContent = 'ไม่มีข้อมูล'; node.style.background = 'var(--surface-2)'; node.style.color = 'var(--muted)'; return; }   // สีตัวอักษรตามธีม (โหมดมืดพื้นเข้ม)
+    const l = level(v); node.innerHTML = '<i class="sw" style="background:#13201b33"></i>' + l.name; node.style.background = 'var(' + l.c + ')'; node.style.color = '';
   }
 
   // ---------- config ----------
@@ -468,7 +468,7 @@ const DEFAULT_CONFIG = {
       if (!s.pts.length) return;
       // break the line where data has gaps
       let d = '', prev = null;
-      s.pts.forEach(p => { const gap = prev && s.gap && (p.t - prev.t) > s.gap; d += (prev && !gap ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1) + ' '; prev = p; });
+      s.pts.forEach(p => { const gap = prev && (p.brk || (s.gap && (p.t - prev.t) > s.gap)); d += (prev && !gap ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1) + ' '; prev = p; });
       el('path', { d, fill: 'none', stroke: css(s.c), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dash || '' }, svg);
       if (s.endDot) { const p = s.pts[s.pts.length - 1]; el('circle', { cx: X(p.t), cy: Y(p.v), r: 4.5, fill: css(s.c), stroke: css('--surface'), 'stroke-width': 2 }, svg); }
     });
@@ -710,13 +710,17 @@ const DEFAULT_CONFIG = {
     rows.forEach(r => { if (r.pm25 == null || r.t < x0) return; const k = Math.floor(r.t / bin) * bin; const b = bins.get(k) || { s: 0, n: 0 }; b.s += r.pm25; b.n++; bins.set(k, b); });
     const pts = [...bins.entries()].sort((a, b) => a[0] - b[0]).map(([t, b]) => ({ t: t + bin / 2, v: b.s / b.n }));
     // station values are hourly: draw them as a step line clipped to the window
-    const hist = store.stationHist.slice().sort((a, b) => a.t - b.t);
+    // ลากค่าเดิมต่อได้ไม่เกิน 3 ชม. (เกณฑ์เดียวกับ "เก่ากว่า 3 ชม.") ช่วงที่ไม่มีข้อมูลนานกว่านั้นให้เส้นขาด ไม่ลากค่าเก่ายาวเหมือนเป็นค่าจริง
+    const HOLD = 3 * H;
+    const hist = store.stationHist.slice().sort((a, b) => a.t - b.t).filter(p => p.t > x0 - HOLD && p.t <= x1);
     const stHist = [];
-    let cur = null;
-    hist.forEach(p => { if (p.t <= x0) cur = p.v; });
-    if (cur != null) stHist.push({ t: x0, v: cur });
-    hist.filter(p => p.t > x0 && p.t <= x1).forEach(p => { if (cur != null) stHist.push({ t: p.t - 1, v: cur }); stHist.push({ t: p.t, v: p.v }); cur = p.v; });
-    if (cur != null) stHist.push({ t: x1, v: cur });
+    hist.forEach((p, i) => {
+      const next = hist[i + 1];
+      const s = Math.max(p.t, x0), e = Math.min(p.t + HOLD, next ? next.t - 1 : x1, x1);
+      if (e < s) return;
+      const last = stHist[stHist.length - 1];
+      stHist.push({ t: s, v: p.v, brk: !!last && s - last.t > 1 }, { t: e, v: p.v });
+    });
     const vmax = Math.max(40, ...pts.map(p => p.v), ...stHist.map(p => p.v));
     const ymax = Math.ceil(vmax / 10) * 10 + 10;
     const nar = $('cOverview').clientWidth < 520, xticks = [];
