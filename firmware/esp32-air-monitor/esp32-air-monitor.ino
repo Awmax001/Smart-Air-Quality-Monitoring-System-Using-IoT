@@ -108,6 +108,7 @@ SparkFun_ENS160 ens;
 #endif
 #if USE_BME280
 Adafruit_BME280 bme;
+TwoWire I2Cbme = TwoWire(1);      // สาย I2C ชุดที่สองสำหรับ BME280 (SDA 13, SCL 14)
 #endif
 bool ensOk = false, bmeOk = false, sdOk = false;
 
@@ -344,8 +345,9 @@ void setupSensors() {
 #endif
 
 #if USE_BME280
+    I2Cbme.begin(13, 14);
   for (uint8_t addr : {0x76, 0x77}) {
-    if (bme.begin(addr, &Wire)) { bmeOk = true; Serial.printf("[bme280] OK at 0x%02X\n", addr); break; }
+    if (bme.begin(addr, &I2Cbme)) { bmeOk = true; Serial.printf("[bme280] OK at 0x%02X\n", addr); break; }
     if (i2cRead8(addr, 0xD0) == 0x58) Serial.printf("[bme280] chip at 0x%02X is a BMP280 (no humidity sensor)\n", addr);
   }
   if (!bmeOk) Serial.println("[bme280] not found at 0x76/0x77");
